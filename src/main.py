@@ -3,6 +3,7 @@
 LOFTER爬虫主程序
 """
 import os
+import sys
 import time
 import argparse
 from .config import DEFAULT_LOGIN_AUTH, DEFAULT_SAVE_PATH
@@ -325,13 +326,41 @@ def main():
     parser_tag_author.add_argument("--min-hot", type=int, default=0, help="最低热度限制")
     add_common_args(parser_tag_author)
     
+    # 命令5: 合并文件
+    parser_merge = subparsers.add_parser("merge", help="合并文件夹中的所有lofter爬取文件")
+    parser_merge.add_argument("input_folder", type=str, help="输入文件夹路径（包含所有要合并的文件）")
+    parser_merge.add_argument("-o", "--output", type=str, default=None,
+                             help="输出文件夹路径（默认为项目根目录下的result文件夹）")
+    parser_merge.add_argument("-n", "--name", type=str, default=None,
+                             help="输出文件名（不含扩展名），如果未指定则使用输入文件夹名")
+    parser_merge.add_argument("-f", "--format", type=str, choices=["txt", "md"], default="txt",
+                             help="文件格式：txt或md（默认为txt）")
+    
     args = parser.parse_args()
     
     if not args.command:
         parser.print_help()
         return
     
-    # 设置参数
+    # 执行相应命令
+    if args.command == "merge":
+        # merge命令不需要通用参数设置
+        # 导入merge模块（使用绝对导入路径）
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        merge_path = os.path.join(project_root, "merge")
+        if merge_path not in sys.path:
+            sys.path.insert(0, merge_path)
+        from merge_files import merge_files
+        
+        merge_files(
+            input_folder=args.input_folder,
+            output_folder=args.output,
+            output_filename=args.name,
+            file_format=args.format
+        )
+        return
+    
+    # 设置通用参数（其他命令需要）
     login_auth = args.login_auth if args.login_auth else DEFAULT_LOGIN_AUTH
     save_path = args.save_path if args.save_path else DEFAULT_SAVE_PATH
     file_format = args.format

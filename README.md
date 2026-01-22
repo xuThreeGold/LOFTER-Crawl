@@ -12,7 +12,11 @@
    - 爬取某个作者的全部文件
    - 爬取某个作者的指定tag的所有文件
 4. **Tag+作者组合爬取**：爬取tag下的文件，然后进入这些文件的作者主页，爬取该作者的指定tag的所有文件
-5. **文件格式**：
+5. **文件合并**：合并一个文件夹中的所有lofter爬取文件
+   - 支持TXT和MD两种格式
+   - 按发表时间排序合并
+   - 每个文件作为一章，标题为"第XX章-文件名"
+6. **文件格式**：
    - TXT格式：图片链接保存在txt中，图片文件单独保存
    - Markdown格式：图片直接嵌入文件
 
@@ -104,6 +108,7 @@ python run.py post --help
 python run.py tag --help
 python run.py author --help
 python run.py tag-author --help
+python run.py merge --help
 ```
 
 ## 使用方法
@@ -196,6 +201,29 @@ python run.py tag-author "风起东宫" "太卢" --save-path "D:\小说\小说\�
 
 # 使用最热排序
 python run.py tag-author "风起东宫" "太卢" --sort total
+```
+
+### 5. 合并文件
+
+```bash
+python run.py merge <输入文件夹> [选项]
+```
+
+功能：合并指定文件夹中的所有lofter爬取文件，按发表时间排序，每个文件作为一章。
+
+示例：
+```bash
+# 合并TXT文件（默认格式），输出到项目根目录下的result文件夹
+python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢"
+
+# 合并MD文件
+python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" -f md
+
+# 指定输出文件夹和文件名
+python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" -o "D:\合并结果" -n "合并后的小说"
+
+# 合并MD文件并指定输出路径
+python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" -f md -o "D:\合并结果" -n "合并后的小说"
 ```
 
 ## 超参数说明
@@ -331,6 +359,21 @@ DEFAULT_SAVE_PATH = "./result"
 
 Tag+作者组合爬取命令支持所有Tag爬取的超参数（`--sort`、`--min-hot`）和通用超参数。
 
+### 文件合并超参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `input_folder` | 字符串（必需） | - | 输入文件夹路径（包含所有要合并的文件） |
+| `-o, --output` | 字符串 | `项目根目录/result` | 输出文件夹路径 |
+| `-n, --name` | 字符串 | 输入文件夹名 | 输出文件名（不含扩展名） |
+| `-f, --format` | 选择项 | `txt` | 文件格式：`txt` 或 `md` |
+
+**注意事项**：
+- 输入文件夹中的文件必须统一格式（要么全是TXT，要么全是MD）
+- 如果无法从文件中提取发表时间，将使用文件的修改时间作为排序依据
+- 合并后的文件会保留原文件的内容，但会去除文件头（TXT格式）或YAML Front-Matter（MD格式）
+- 每个原文件在合并后的文件中作为一章，章节标题格式为"第XX章-文件名"
+
 ## 通用选项（快速参考）
 
 - `--login-auth <授权码>`: 指定登录授权码（覆盖默认值）
@@ -401,6 +444,19 @@ python run.py post "https://xxx.lofter.com/post/xxx" \
     --format md \
     --no-images \
     --save-path "D:\小说\小说\耽美\题材_风起东宫or太卢"
+```
+
+### 完整示例6：合并文件
+
+```bash
+# 合并TXT文件
+python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" -f txt
+
+# 合并MD文件并指定输出
+python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" \
+    -f md \
+    -o "D:\合并结果" \
+    -n "合并后的小说"
 ```
 
 ## 高级用法
