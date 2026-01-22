@@ -7,53 +7,114 @@ import re
 import html2text
 
 
+def extract_content_with_links(parse, selector, join_word=""):
+    """
+    从指定选择器提取内容，并在链接文本后附加链接URL
+    标题（h1, h2, h3等）中的链接不需要附加
+    """
+    result_parts = []
+    
+    # 获取选择器对应的元素
+    elements = parse.xpath(selector)
+    if not elements:
+        return ""
+    
+    # 递归处理元素，按DOM顺序提取
+    def process_element(elem, is_in_heading=False):
+        parts = []
+        
+        # 检查当前元素是否是标题
+        if hasattr(elem, 'tag') and elem.tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+            is_in_heading = True
+        
+        # 先添加当前元素的直接文本（在第一个子元素之前的文本）
+        if hasattr(elem, 'text') and elem.text:
+            text = elem.text.strip()
+            if text:
+                parts.append(text)
+        
+        # 遍历子节点
+        for child in elem:
+            if hasattr(child, 'tag'):
+                if child.tag == 'a':
+                    # 链接
+                    link_text = ''.join(child.xpath('.//text()')).strip()
+                    link_url = child.get('href', '')
+                    if link_text:
+                        if not is_in_heading and link_url:
+                            # 不在标题中，附加链接URL
+                            parts.append(f"{link_text} [{link_url}]")
+                        else:
+                            # 在标题中，不附加链接URL
+                            parts.append(link_text)
+                elif child.tag in ['script', 'style']:
+                    # 跳过脚本和样式
+                    continue
+                else:
+                    # 递归处理子元素
+                    parts.extend(process_element(child, is_in_heading))
+            else:
+                # 文本节点（这种情况在lxml中很少见，因为文本通常作为元素的text属性）
+                text = str(child).strip() if child else ""
+                if text:
+                    parts.append(text)
+        
+        # 添加当前元素的尾部文本（在最后一个子元素之后的文本）
+        if hasattr(elem, 'tail') and elem.tail:
+            text = elem.tail.strip()
+            if text:
+                parts.append(text)
+        
+        return parts
+    
+    # 处理所有元素
+    for element in elements:
+        result_parts.extend(process_element(element))
+    
+    # 如果上面的方法没有提取到内容，使用原来的方法作为后备
+    if not result_parts:
+        lines = parse.xpath(f'{selector}//text()')
+        content = join_word.join(lines)
+        return content
+    
+    return join_word.join(result_parts)
+
+
 def template1(parse, join_word=""):
     """模板1: //div[@class="content"]/div[@class="text"]"""
-    lines = parse.xpath('//div[@class="content"]/div[@class="text"]//text()')
-    content = join_word.join(lines)
-    return content
+    return extract_content_with_links(parse, '//div[@class="content"]/div[@class="text"]', join_word)
 
 
 def template2(parse, join_word=""):
     """模板2: //div[@class="cont"]/div[@class="text"]"""
-    lines = parse.xpath('//div[@class="cont"]/div[@class="text"]//text()')
-    content = join_word.join(lines)
-    return content
+    return extract_content_with_links(parse, '//div[@class="cont"]/div[@class="text"]', join_word)
 
 
 def template3(parse, join_word=""):
     """模板3: //div[@class="cont"]/div[@class]"""
-    lines = parse.xpath('//div[@class="cont"]/div[@class]//text()')
-    content = join_word.join(lines).split("评论")[0]
-    return content
+    content = extract_content_with_links(parse, '//div[@class="cont"]/div[@class]', join_word)
+    return content.split("评论")[0]
 
 
 def template4(parse, join_word=""):
     """模板4: //div[@class="txtcont"]"""
-    lines = parse.xpath('//div[@class="txtcont"]//text()')
-    content = join_word.join(lines)
-    return content
+    return extract_content_with_links(parse, '//div[@class="txtcont"]', join_word)
 
 
 def template5(parse, join_word=""):
     """模板5: //div[@class="text"]"""
-    lines = parse.xpath('//div[@class="text"]//text()')
-    content = join_word.join(lines)
-    return content
+    return extract_content_with_links(parse, '//div[@class="text"]', join_word)
 
 
 def template6(parse, join_word=""):
     """模板6: //div[@class="text"]/p/text()"""
-    lines = parse.xpath('//div[@class="text"]/p/text()')
-    content = (join_word + "\n\n").join(lines)
-    return content
+    # 对于模板6，需要特殊处理，因为它是按p标签提取的
+    return extract_content_with_links(parse, '//div[@class="text"]', join_word)
 
 
 def template7(parse, join_word=""):
     """模板7: //div[contains(@class,'post-ctc box')]"""
-    lines = parse.xpath("//div[contains(@class,'post-ctc box')]//p//text()")
-    content = join_word.join(lines)
-    return content
+    return extract_content_with_links(parse, "//div[contains(@class,'post-ctc box')]", join_word)
 
 
 def all_purpose_template(parse, title, blog_type, join_word=""):
