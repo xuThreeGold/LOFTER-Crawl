@@ -26,8 +26,16 @@ def sanitize_filename(filename):
     return filename
 
 
-def filename_check(filename, file_content, path, file_type):
-    """检查文件名是否重复，如果重复则添加序号"""
+def filename_check(filename, file_content, path, file_type, publish_time=None):
+    """
+    检查文件名是否重复，如果重复则根据时间判断是否覆盖或添加序号
+    :param filename: 文件名
+    :param file_content: 新文件内容
+    :param path: 保存路径
+    :param file_type: 文件类型
+    :param publish_time: 发表时间（用于判断是否覆盖）
+    :return: 最终文件名
+    """
     import os
     
     if not os.path.exists(os.path.join(path, filename)):
@@ -52,7 +60,21 @@ def filename_check(filename, file_content, path, file_type):
     if exist_file == file_content:
         return filename
     
-    # 如果文件内容不同，添加序号
+    # 如果提供了发表时间，检查已存在文件的时间
+    if publish_time and (file_type == "txt" or file_type == "md"):
+        try:
+            # 从已存在文件的开头提取时间
+            # 文件头格式：{title} by {author_name}[{author_ip}]\n发表时间：{publish_time}\n...
+            exist_time_match = re.search(r'发表时间：([^\n]+)', exist_file)
+            if exist_time_match:
+                exist_time = exist_time_match.group(1).strip()
+                # 如果时间相同，返回原文件名（用于覆盖）
+                if exist_time == publish_time:
+                    return filename
+        except:
+            pass
+    
+    # 如果文件内容不同且时间不同，添加序号
     num = 2
     base_name = filename.rsplit(".", 1)[0]
     extension = filename.rsplit(".", 1)[1] if "." in filename else ""
@@ -107,3 +129,49 @@ def sleep_random(min_sec=0.5, max_sec=2.0):
     """随机休眠"""
     import time
     time.sleep(random.uniform(min_sec, max_sec))
+
+
+def img_fliter(imgs_url, blog_type):
+    """
+    过滤图片链接（参考lofterSpider-master的l4_author_img.py）
+    :param imgs_url: 图片URL列表
+    :param blog_type: 博客类型 "img", "text", "article"
+    :return: 过滤后的图片URL列表
+    """
+    filtered_imgs_url = []
+    for img_url in imgs_url:
+        # 移除HTML实体编码
+        img_url = img_url.replace('&amp;', '&')
+        
+        # 按链接格式过滤掉头像图片和推荐图片
+        # blog_type目前有3种，img、text、article，img的图片链接需要过滤掉有"&amp"的，text和article不用
+        if "&amp;" in img_url:
+            if blog_type == "img":
+                continue
+            else:
+                re_amp = re.search(r"\d\d&amp", img_url)
+                if re_amp:
+                    continue
+        
+        # 过滤小尺寸图片（头像等）- 更严格的过滤
+        # 匹配16x16, 64x64, 96x96等小尺寸图片
+        re_url = re.search(r"[1649]{2}[xy][1649]{2}", img_url)
+        if re_url:
+            continue
+        
+        # 过滤包含avatar、head、icon等关键词的图片（可能是头像）
+        if any(keyword in img_url.lower() for keyword in ['avatar', 'head', 'icon', 'logo']):
+            continue
+        
+        # 删除图片链接中的大小参数，获取时会默认最高画质
+        # 但保留基础URL路径
+        img_url = img_url.split("imageView")[0]
+        # 如果还有?watermark等参数，也移除
+        if '?watermark' in img_url:
+            img_url = img_url.split('?watermark')[0]
+        
+        # 去重
+        if img_url not in filtered_imgs_url:
+            filtered_imgs_url.append(img_url)
+    
+    return filtered_imgs_url

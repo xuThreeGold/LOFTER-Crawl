@@ -37,7 +37,8 @@ def save_post_txt(post_info, save_path, save_images=True):
     # 处理图片
     img_urls = post_info.get("img_urls", [])
     illustration = post_info.get("illustration", [])
-    all_images = img_urls + illustration
+    # 合并并去重，避免重复下载
+    all_images = list(dict.fromkeys(img_urls + illustration))  # 使用dict.fromkeys保持顺序并去重
     
     image_links_text = ""
     if all_images:
@@ -48,41 +49,72 @@ def save_post_txt(post_info, save_path, save_images=True):
     # 构建完整内容
     full_content = file_head + "\n\n" + content + image_links_text
     
-    # 生成文件名
+    # 生成文件名：只使用标题内容
     title_safe = sanitize_filename(title)
-    author_name_safe = sanitize_filename(author_name)
-    filename = f"{title_safe} by {author_name_safe}.txt"
+    filename = f"{title_safe}.txt"
     
-    # 检查文件名是否重复
-    filename = filename_check(filename, full_content, save_path, "txt")
+    # 检查文件名是否重复（传入发表时间用于判断是否覆盖）
+    original_filename = filename
+    filename = filename_check(filename, full_content, save_path, "txt", publish_time)
+    
+    # 判断是否需要覆盖文件
+    is_overwrite = (filename == original_filename)
     
     # 保存文件
     file_path = os.path.join(save_path, filename)
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(full_content)
     
-    # 保存图片文件
-    if save_images and all_images:
-        base_name = filename.rsplit(".", 1)[0]
-        for i, img_url in enumerate(all_images, 1):
-            try:
-                img_response = requests.get(img_url, headers=get_headers(), timeout=10)
-                if img_response.status_code == 200:
-                    # 判断图片类型
-                    img_ext = "jpg"
-                    if "gif" in img_url.lower():
-                        img_ext = "gif"
-                    elif "png" in img_url.lower():
-                        img_ext = "png"
+    # 保存图片文件（参考LoftTagDownloader-master的DownloadFile函数和lofterSpider-master的l13_like_share_tag.py）
+    if save_images:
+        if all_images:
+            print(f"找到 {len(all_images)} 张图片，开始下载...")
+            # 如果文件被覆盖，图片也使用原名称；如果文件添加了(2)，图片也添加(2)
+            base_name = filename.rsplit(".", 1)[0]
+            
+            for i, img_url in enumerate(all_images, 1):
+                try:
+                    print(f"正在下载图片 {i}/{len(all_images)}: {img_url[:80]}...", end="")
                     
-                    img_filename = f"{base_name}_picture{i}.{img_ext}"
-                    img_path = os.path.join(save_path, img_filename)
+                    # 设置headers（参考LoftTagDownloader-master第167-168行和lofterSpider-master第842-844行）
+                    headers = get_headers()
+                    # 设置Referer（参考lofterSpider-master第844行）
+                    headers["Referer"] = url.split("/post")[0] + "/"
                     
-                    with open(img_path, "wb") as img_f:
-                        img_f.write(img_response.content)
-                    print(f"已保存图片: {img_filename}")
-            except Exception as e:
-                print(f"保存图片失败 {img_url}: {e}")
+                    # 使用stream方式下载（参考LoftTagDownloader-master第171行）
+                    img_response = requests.get(img_url, headers=headers, timeout=30, stream=True)
+                    
+                    if img_response.status_code == 200:
+                        # 判断图片类型（参考lofterSpider-master第824-831行）
+                        img_ext = "jpg"
+                        if "gif" in img_url.lower():
+                            img_ext = "gif"
+                        elif "png" in img_url.lower():
+                            img_ext = "png"
+                        
+                        img_filename = f"{base_name}_picture{i}.{img_ext}"
+                        img_path = os.path.join(save_path, img_filename)
+                        
+                        # 流式写入（参考LoftTagDownloader-master第185-186行）
+                        with open(img_path, "wb") as img_f:
+                            for chunk in img_response.iter_content(chunk_size=8192):
+                                if chunk:
+                                    img_f.write(chunk)
+                        
+                        # 获取文件大小用于显示
+                        file_size = os.path.getsize(img_path)
+                        if file_size > 1048576:
+                            size_str = f"{file_size / 1048576:.2f}MB"
+                        else:
+                            size_str = f"{file_size / 1024:.2f}KB"
+                        
+                        print(f" ✓ 已保存: {img_filename} ({size_str})")
+                    else:
+                        print(f" ✗ 下载失败，状态码: {img_response.status_code}")
+                except Exception as e:
+                    print(f" ✗ 保存失败: {str(e)}")
+        else:
+            print("未找到图片链接")
     
     return filename
 
@@ -118,7 +150,8 @@ def save_post_markdown(post_info, save_path, save_images=True):
     # 处理图片
     img_urls = post_info.get("img_urls", [])
     illustration = post_info.get("illustration", [])
-    all_images = img_urls + illustration
+    # 合并并去重，避免重复下载
+    all_images = list(dict.fromkeys(img_urls + illustration))  # 使用dict.fromkeys保持顺序并去重
     
     if all_images:
         md_content += "## 图片\n\n"
@@ -155,13 +188,12 @@ def save_post_markdown(post_info, save_path, save_images=True):
             for i, img_url in enumerate(all_images, 1):
                 md_content += f"![图{i}]({img_url})\n\n"
     
-    # 生成文件名
+    # 生成文件名：只使用标题内容
     title_safe = sanitize_filename(title)
-    author_name_safe = sanitize_filename(author_name)
-    filename = f"{title_safe} by {author_name_safe}.md"
+    filename = f"{title_safe}.md"
     
-    # 检查文件名是否重复
-    filename = filename_check(filename, md_content, save_path, "md")
+    # 检查文件名是否重复（传入发表时间用于判断是否覆盖）
+    filename = filename_check(filename, md_content, save_path, "md", publish_time)
     
     # 保存文件
     file_path = os.path.join(save_path, filename)

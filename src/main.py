@@ -151,15 +151,10 @@ def crawl_tag_then_author(tag_name, target_tag, sort_type="new", save_path=None,
     save_posts(all_posts, save_path, file_format, group_by_author, save_images)
 
 
-def main():
-    """主函数"""
-    parser = argparse.ArgumentParser(description="LOFTER爬虫工具")
-    
-    # 登录参数
+def add_common_args(parser):
+    """添加通用参数到解析器"""
     parser.add_argument("--login-auth", type=str, default=None,
                         help="登录授权码，如果不指定则使用默认值")
-    
-    # 通用参数
     parser.add_argument("--save-path", type=str, default=None,
                         help=f"保存路径，默认: {DEFAULT_SAVE_PATH}")
     parser.add_argument("--format", type=str, choices=["txt", "md"], default="txt",
@@ -168,6 +163,11 @@ def main():
                         help="不保存图片文件")
     parser.add_argument("--no-group", action="store_true",
                         help="不按作者分组（所有文件保存在一个文件夹）")
+
+
+def main():
+    """主函数"""
+    parser = argparse.ArgumentParser(description="LOFTER爬虫工具")
     
     # 子命令
     subparsers = parser.add_subparsers(dest="command", help="可用命令")
@@ -175,6 +175,7 @@ def main():
     # 命令1: 保存单篇文章
     parser_post = subparsers.add_parser("post", help="保存单篇文章")
     parser_post.add_argument("url", type=str, help="文章URL")
+    add_common_args(parser_post)
     
     # 命令2: 爬取tag
     parser_tag = subparsers.add_parser("tag", help="爬取tag下的所有文章")
@@ -182,6 +183,7 @@ def main():
     parser_tag.add_argument("--sort", type=str, choices=["new", "total", "month", "week", "date"],
                            default="new", help="排序方式: new(最新), total(全部最热), month(月榜), week(周榜), date(日榜)")
     parser_tag.add_argument("--min-hot", type=int, default=0, help="最低热度限制")
+    add_common_args(parser_tag)
     
     # 命令3: 爬取作者
     parser_author = subparsers.add_parser("author", help="爬取作者的文章")
@@ -192,6 +194,7 @@ def main():
                               help="开始时间 YYYY-MM-DD")
     parser_author.add_argument("--end-time", type=str, default=None,
                               help="结束时间 YYYY-MM-DD")
+    add_common_args(parser_author)
     
     # 命令4: tag+作者组合
     parser_tag_author = subparsers.add_parser("tag-author", help="爬取tag后爬取作者的指定tag文章")
@@ -200,6 +203,7 @@ def main():
     parser_tag_author.add_argument("--sort", type=str, choices=["new", "total", "month", "week", "date"],
                                    default="new", help="排序方式")
     parser_tag_author.add_argument("--min-hot", type=int, default=0, help="最低热度限制")
+    add_common_args(parser_tag_author)
     
     args = parser.parse_args()
     
