@@ -71,54 +71,47 @@ def crawl_tag(tag_name, sort_type="new", save_path=None, file_format="txt",
     print(f"\n步骤2: 开始依次保存文章...")
     
     if group_by_author:
-        # 按作者分组保存
-        # 先解析每篇文章获取作者信息，然后分组
-        authors = {}  # {author_name: [url1, url2, ...]}
+        # 按作者分组保存：边解析边保存，不需要先解析完所有文章
+        from .utils import sanitize_filename
+        author_paths = {}  # {author_name: author_path} 缓存已创建的作者文件夹路径
+        total_saved = 0
         
-        print("正在解析文章以获取作者信息...")
         for i, url in enumerate(post_urls, 1):
             try:
-                print(f"[{i}/{len(post_urls)}] 正在解析作者信息: {url}")
-                # 只解析一次获取作者信息，不保存
+                print(f"\n[{i}/{len(post_urls)}] 正在保存: {url}")
+                # 解析文章获取完整信息（包括作者）
                 post_info = parse_post(url, login_auth)
                 if post_info:
                     author_name = post_info.get("author_name", "未知作者")
-                    if author_name not in authors:
-                        authors[author_name] = []
-                    authors[author_name].append(url)
-                else:
-                    # 解析失败，放到未知作者
-                    if "未知作者" not in authors:
-                        authors["未知作者"] = []
-                    authors["未知作者"].append(url)
-            except Exception as e:
-                print(f"解析文章失败 {url}: {e}")
-                # 即使解析失败，也尝试保存
-                if "未知作者" not in authors:
-                    authors["未知作者"] = []
-                authors["未知作者"].append(url)
-        
-        print(f"\n找到 {len(authors)} 位作者，开始保存...")
-        
-        # 为每位作者创建文件夹并保存文章
-        from .utils import sanitize_filename
-        total_saved = 0
-        for author_name, author_urls in authors.items():
-            author_name_safe = sanitize_filename(author_name)
-            author_path = os.path.join(save_path, f"作者_{author_name_safe}")
-            os.makedirs(author_path, exist_ok=True)
-            
-            print(f"\n正在保存作者 {author_name} 的 {len(author_urls)} 篇文章...")
-            
-            for i, url in enumerate(author_urls, 1):
-                try:
-                    print(f"[作者: {author_name}] [{i}/{len(author_urls)}] 正在保存: {url}")
-                    save_single_post(url, author_path, file_format, login_auth, save_images)
+                    
+                    # 获取或创建作者文件夹
+                    if author_name not in author_paths:
+                        author_name_safe = sanitize_filename(author_name)
+                        author_path = os.path.join(save_path, f"作者_{author_name_safe}")
+                        os.makedirs(author_path, exist_ok=True)
+                        author_paths[author_name] = author_path
+                        print(f"创建作者文件夹: {author_path}")
+                    else:
+                        author_path = author_paths[author_name]
+                    
+                    # 立即保存这篇文章
+                    if file_format == "md":
+                        from .file_saver import save_post_markdown
+                        filename = save_post_markdown(post_info, author_path, save_images)
+                    else:
+                        from .file_saver import save_post_txt
+                        filename = save_post_txt(post_info, author_path, save_images)
+                    
+                    print(f"✓ 已保存: {filename}")
                     total_saved += 1
-                except Exception as e:
-                    print(f"保存文章失败 {url}: {e}")
+                else:
+                    print(f"✗ 解析文章失败，跳过: {url}")
+            except Exception as e:
+                print(f"✗ 保存文章失败 {url}: {e}")
+                import traceback
+                traceback.print_exc()
         
-        print(f"\n总共保存了 {total_saved} 篇文章")
+        print(f"\n总共保存了 {total_saved} 篇文章，涉及 {len(author_paths)} 位作者")
     else:
         # 不分组，全部保存在一个文件夹
         print(f"开始保存 {len(post_urls)} 篇文章...")

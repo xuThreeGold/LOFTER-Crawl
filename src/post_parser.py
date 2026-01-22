@@ -192,7 +192,7 @@ def insert_image_links_in_content(content_text, img_urls, illustration, blog_htm
             '//div[@class="txtcont"]',  # 模板4
             '//div[@class="text"]',  # 模板5
             '//div[@class="text"]',  # 模板6
-            '//div[contains(@class,"post-ctc box")]',  # 模板7
+            '//div[contains(@class,"post-ctc")]',  # 模板7：支持 post-ctc 和 post-ctc box
         ]
         
         # 构建选择器列表：先尝试模板对应的选择器，再尝试其他选择器
@@ -586,7 +586,7 @@ def parse_post(url, login_auth=None, login_key=None):
             '//div[@class="txtcont"]',  # 模板4
             '//div[@class="text"]',  # 模板5
             '//div[@class="text"]',  # 模板6
-            '//div[contains(@class,"post-ctc box")]',  # 模板7
+            '//div[contains(@class,"post-ctc")]',  # 模板7：支持 post-ctc 和 post-ctc box
         ]
         
         content_selector = content_selectors[template_id] if template_id < len(content_selectors) else None
@@ -594,7 +594,31 @@ def parse_post(url, login_auth=None, login_key=None):
         # 方法1: 优先从文章正文区域的img标签提取图片
         if content_selector:
             try:
-                # 从正文区域提取img标签
+                # 对于模板7（post-ctc），优先从pic下的a标签的bigimgsrc提取
+                if template_id == 7:
+                    # 先尝试从 post-ctc -> pic -> a bigimgsrc 提取
+                    bigimgsrc_elements = blog_parse.xpath(f'{content_selector}//div[@class="pic"]//a/@bigimgsrc')
+                    if bigimgsrc_elements:
+                        for bigimgsrc in bigimgsrc_elements:
+                            # 移除HTML实体编码
+                            bigimgsrc = bigimgsrc.replace('&amp;', '&')
+                            # 匹配lofter图片链接
+                            match = re.search(r'(https?://imglf\d*\.lf\d+\.net/img/[^?]*)', bigimgsrc)
+                            if match:
+                                clean_url = match.group(1)
+                                # 移除imageView参数
+                                if '?imageView' in clean_url:
+                                    clean_url = clean_url.split('?imageView')[0]
+                                elif '?' in clean_url:
+                                    clean_url = clean_url.split('?')[0]
+                                # 确保URL以图片扩展名结尾
+                                if clean_url and any(clean_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                                    if clean_url not in img_urls:
+                                        img_urls.append(clean_url)
+                        if img_urls:
+                            print(f"从post-ctc/pic/bigimgsrc提取到 {len(img_urls)} 个图片链接")
+                
+                # 从正文区域提取img标签（作为后备）
                 img_elements = blog_parse.xpath(f'{content_selector}//img/@src')
                 
                 # 如果正文区域（text）没有图片，尝试从cont或content下的pic类提取
@@ -639,14 +663,33 @@ def parse_post(url, login_auth=None, login_key=None):
             except Exception as e:
                 print(f"从正文区域提取图片失败: {e}")
         
-        # 如果模板0（通用模板）或没有content_selector，尝试从photo-main-content-img提取
+        # 如果模板0（通用模板）或没有content_selector，尝试从photo-main-content-img或post-ctc提取
         if (not img_urls) and (template_id == 0 or not content_selector):
             try:
-                # 尝试从main-content-img类提取（photo类型博文）
-                img_elements = blog_parse.xpath('//div[contains(@class,"main-content-img")]//img/@src')
-                if not img_elements:
-                    # 尝试从photo类提取
-                    img_elements = blog_parse.xpath('//div[contains(@class,"photo")]//div[contains(@class,"img")]//img/@src')
+                # 先尝试从post-ctc -> pic -> a bigimgsrc提取（模板0可能匹配到这种结构）
+                post_ctc_bigimgsrc = blog_parse.xpath('//div[contains(@class,"post-ctc")]//div[@class="pic"]//a/@bigimgsrc')
+                if post_ctc_bigimgsrc:
+                    for bigimgsrc in post_ctc_bigimgsrc:
+                        bigimgsrc = bigimgsrc.replace('&amp;', '&')
+                        match = re.search(r'(https?://imglf\d*\.lf\d+\.net/img/[^?]*)', bigimgsrc)
+                        if match:
+                            clean_url = match.group(1)
+                            if '?imageView' in clean_url:
+                                clean_url = clean_url.split('?imageView')[0]
+                            elif '?' in clean_url:
+                                clean_url = clean_url.split('?')[0]
+                            if clean_url and any(clean_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                                if clean_url not in img_urls:
+                                    img_urls.append(clean_url)
+                    if img_urls:
+                        print(f"从post-ctc/pic/bigimgsrc提取到 {len(img_urls)} 个图片链接")
+                
+                # 如果还没有，尝试从main-content-img类提取（photo类型博文）
+                if not img_urls:
+                    img_elements = blog_parse.xpath('//div[contains(@class,"main-content-img")]//img/@src')
+                    if not img_elements:
+                        # 尝试从photo类提取
+                        img_elements = blog_parse.xpath('//div[contains(@class,"photo")]//div[contains(@class,"img")]//img/@src')
                 
                 if img_elements:
                     for src in img_elements:
@@ -791,7 +834,7 @@ def parse_post(url, login_auth=None, login_key=None):
             '//div[@class="txtcont"]',  # 模板4
             '//div[@class="text"]',  # 模板5
             '//div[@class="text"]',  # 模板6
-            '//div[contains(@class,"post-ctc box")]',  # 模板7
+            '//div[contains(@class,"post-ctc")]',  # 模板7：支持 post-ctc 和 post-ctc box
         ]
         
         if template_id > 0 and template_id < len(content_selectors) and content_selectors[template_id]:
