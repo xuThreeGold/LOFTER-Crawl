@@ -3,11 +3,12 @@
 LOFTER爬虫主程序
 """
 import os
+import time
 import argparse
 from .config import DEFAULT_LOGIN_AUTH, DEFAULT_SAVE_PATH
 from .post_parser import parse_post
 from .tag_crawler import crawl_tag_posts
-from .author_crawler import crawl_author_posts, get_author_info
+from .author_crawler import get_author_info, get_author_blog_urls, check_blog_has_tag
 from .file_saver import save_posts, save_post_txt, save_post_markdown
 
 
@@ -15,7 +16,7 @@ def save_single_post(url, save_path=None, file_format="txt", login_auth=None, sa
     """
     功能1: 保存单篇文章
     :param url: 文章URL
-    :param save_path: 保存路径，默认使用result文件夹
+    :param save_path: 保存路径，如果为None则使用DEFAULT_SAVE_PATH
     :param file_format: 文件格式 "txt" 或 "md"
     :param login_auth: 登录授权码
     :param save_images: 是否保存图片
@@ -23,7 +24,12 @@ def save_single_post(url, save_path=None, file_format="txt", login_auth=None, sa
     if save_path is None:
         save_path = DEFAULT_SAVE_PATH
     
+    # 确保保存路径存在
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+    
     print(f"正在解析文章: {url}")
+    print(f"保存路径: {save_path}")
     post_info = parse_post(url, login_auth)
     
     print(f"正在保存文章...")
@@ -130,7 +136,10 @@ def crawl_author(author_url, target_tags=None, save_path=None, file_format="txt"
                   group_by_author=False, login_auth=None, save_images=True,
                   start_time=None, end_time=None):
     """
-    功能4: 爬取作者的文章
+    功能4: 爬取作者的文章（参考lofterSpider-master_v2/src/author_spider.py第265-368行）
+    逻辑：
+    1. 获得该作者所有文章链接
+    2. 一篇一篇地保存，先确定是否符合tag要求，符合调用保存单篇文章的方法保存
     :param author_url: 作者主页URL
     :param target_tags: 目标tags列表，如果指定则只爬取包含这些tag的文章
     :param save_path: 保存路径
@@ -138,27 +147,74 @@ def crawl_author(author_url, target_tags=None, save_path=None, file_format="txt"
     :param group_by_author: 是否按作者分组（对于单个作者通常设为False）
     :param login_auth: 登录授权码
     :param save_images: 是否保存图片
-    :param start_time: 开始时间 "YYYY-MM-DD"
-    :param end_time: 结束时间 "YYYY-MM-DD"
+    :param start_time: 开始时间 "YYYY-MM-DD"（暂未实现）
+    :param end_time: 结束时间 "YYYY-MM-DD"（暂未实现）
     """
-    if save_path is None:
-        save_path = DEFAULT_SAVE_PATH
-    
     print(f"正在爬取作者: {author_url}")
     
-    tags_filter_mode = "in"  # 默认包含模式
     if target_tags:
-        print(f"目标tags: {target_tags}")
+        print(f"只爬取包含tag {target_tags} 的文章")
     
-    posts = crawl_author_posts(author_url, target_tags, tags_filter_mode, 
-                               login_auth, start_time=start_time, end_time=end_time)
+    # 步骤1: 获得该作者所有文章链接（参考lofterSpider-master_v2/src/author_spider.py第292行）
+    blog_urls, author_info = get_author_blog_urls(author_url, login_auth)
     
-    if not posts:
-        print("未获取到任何文章")
+    if not blog_urls:
+        print("未获取到任何博客")
         return
     
-    print(f"获取到 {len(posts)} 篇文章，开始保存...")
-    save_posts(posts, save_path, file_format, group_by_author, save_images)
+    # 获取作者名，用于构建默认保存路径
+    author_name = author_info['author_name']
+    
+    # 如果未指定保存路径，或者使用的是默认路径，默认保存到 result/作者_XXX 文件夹
+    if save_path is None or save_path == DEFAULT_SAVE_PATH:
+        from .utils import sanitize_filename
+        author_folder_name = f"作者_{author_name}"
+        author_folder_name = sanitize_filename(author_folder_name)
+        save_path = os.path.join(DEFAULT_SAVE_PATH, author_folder_name)
+        print(f"未指定保存路径，使用默认路径: {save_path}")
+    else:
+        print(f"使用指定的保存路径: {save_path}")
+    
+    # 确保保存路径存在
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+        print(f"创建保存路径: {save_path}")
+    
+    print(f"最终保存路径: {save_path}")
+    
+    print(f"\n开始保存博客到 {save_path}...")
+    
+    # 步骤2: 一篇一篇地保存，先确定是否符合tag要求，符合调用保存单篇文章的方法保存
+    # 参考lofterSpider-master_v2/src/author_spider.py第300-363行
+    saved_count = 0
+    skipped_count = 0
+    
+    for i, blog_url in enumerate(blog_urls, 1):
+        print(f"\n[{i}/{len(blog_urls)}]")
+        
+        # 如果指定了tag，验证博客是否包含该tag
+        # 通过访问博客页面获取准确的tag信息，确保只保存包含目标tag的文章
+        if target_tags:
+            if not check_blog_has_tag(blog_url, target_tags, login_auth):
+                print(f"博客不包含目标tag，跳过")
+                skipped_count += 1
+                continue
+        
+        try:
+            # 调用保存单篇文章的方法保存（不要修改）
+            save_single_post(blog_url, save_path, file_format, login_auth, save_images)
+            saved_count += 1
+            
+            time.sleep(1)  # 避免请求过快
+        except Exception as e:
+            print(f"保存博客 {blog_url} 失败: {e}")
+            import traceback
+            traceback.print_exc()
+            continue
+    
+    print(f"\n完成！共保存 {saved_count} 篇博客到 {save_path}")
+    if target_tags and skipped_count > 0:
+        print(f"跳过 {skipped_count} 篇不包含目标tag的博客")
 
 
 def crawl_tag_then_author(tag_name, target_tag, sort_type="new", save_path=None,
