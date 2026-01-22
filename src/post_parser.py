@@ -368,44 +368,57 @@ def parse_post(url, login_auth=None, login_key=None):
     except Exception as e:
         print(f"从<title>标签提取标题失败: {e}")
     
-    # 从归档页面获取时间和标题（参考l10_blogs_txt.py）
-    # 如果title标签没有获取到，才从归档页面获取
+    # 优先从归档页面获取时间（参考l10_blogs_txt.py第91-93行）
+    # 这是最准确的方法，应该总是尝试
     public_time = ""
-    if not title and author_id:
+    archive_title = ""
+    if author_id:
         try:
+            print("准备从归档页面获取时间", end="\t")
             time_and_title = get_time_and_title_from_archive(url, author_id, login_key, login_auth)
             public_time = time_and_title[0]
-            title = time_and_title[1]
+            archive_title = time_and_title[1]  # 保存归档页面的标题作为备用
+            if public_time:
+                print(f"已获取到时间: {public_time}")
         except Exception as e:
-            print(f"从归档页面获取时间标题失败: {e}")
+            print(f"从归档页面获取时间失败: {e}")
     
-    # 如果归档页面没有获取到，尝试从文章页面获取（参考l10_blogs_txt.py第94-111行）
-    if not public_time and not title:
-        print("尝试从博客页中匹配标题和时间", end="\t")
-        try:
-            title_path = blog_parse.xpath("//h2//text()")
-            if title_path:
-                title = title_path[0].strip()
-                print(f"匹配成功: {title}")
-        except:
-            pass
-        
+    # 如果<title>标签没有获取到标题，使用归档页面的标题
+    if not title and archive_title:
+        title = archive_title
+        print(f"使用归档页面的标题: {title}")
+    
+    # 如果归档页面没有获取到时间，尝试从文章页面获取（参考l10_blogs_txt.py第104-111行）
+    if not public_time:
+        print("尝试从博客页中匹配发表时间", end="\t")
         try:
             re_date = re.search(r"\d{4}[.\\\/-]\d{2}[.\\\/-]\d{2}", blog_html)
             if re_date:
                 public_time = re_date.group(0).replace("\\", "-").replace(".", "-").replace("/", "-")
                 print(f"匹配成功: {public_time}")
             else:
-                public_time = time.strftime("%Y-%m-%d", time.localtime())
-                print("匹配失败，使用当前日期")
+                public_time = "1970-01-01"
+                print("匹配失败，发表时间将设为 1970-01-01")
         except:
-            public_time = time.strftime("%Y-%m-%d", time.localtime())
+            public_time = "1970-01-01"
+            print("匹配失败，发表时间将设为 1970-01-01")
     
+    # 如果归档页面和title标签都没有获取到标题，尝试从文章页面获取（参考l10_blogs_txt.py第96-102行）
     if not title:
-        title = f"图片配文 {public_time}" if public_time else "无标题"
+        print("尝试从博客页中匹配标题", end="\t")
+        try:
+            title_path = blog_parse.xpath("//h2//text()")
+            if title_path:
+                title = title_path[0].strip()
+                print(f"匹配成功: {title}")
+            else:
+                print("匹配失败，将作为文本保存")
+        except:
+            pass
     
-    if not public_time:
-        public_time = time.strftime("%Y-%m-%d", time.localtime())
+    # 如果还是没有标题，使用默认标题
+    if not title:
+        title = f"图片配文 {public_time}" if public_time and public_time != "1970-01-01" else "无标题"
     
     # 使用从归档页面或文章页面获取的时间和标题
     publish_time = public_time
