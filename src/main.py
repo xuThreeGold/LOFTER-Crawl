@@ -38,7 +38,11 @@ def save_single_post(url, save_path=None, file_format="txt", login_auth=None, sa
 def crawl_tag(tag_name, sort_type="new", save_path=None, file_format="txt", 
                group_by_author=True, login_auth=None, save_images=True, min_hot=0):
     """
-    功能3: 爬取tag下的所有文件
+    功能3: 爬取tag下的所有文章
+    新逻辑：
+    1. 先获取所有文章链接
+    2. 调用成熟的保存单篇文章的方法依次保存
+    3. 对每个文件查看作者，放到对应的作者文件夹，没有就新建（如果选择按作者保存的话）
     :param tag_name: tag名称
     :param sort_type: 排序类型 "new"(最新), "total"(全部最热), "month"(月榜), "week"(周榜), "date"(日榜)
     :param save_path: 保存路径
@@ -52,14 +56,81 @@ def crawl_tag(tag_name, sort_type="new", save_path=None, file_format="txt",
         save_path = DEFAULT_SAVE_PATH
     
     print(f"正在爬取tag: {tag_name}, 排序方式: {sort_type}")
-    posts = crawl_tag_posts(tag_name, sort_type, login_auth, min_hot=min_hot)
     
-    if not posts:
-        print("未获取到任何文章")
+    # 步骤1: 先获取所有文章链接
+    print("步骤1: 正在获取所有文章链接...")
+    post_urls = crawl_tag_posts(tag_name, sort_type, login_auth, min_hot=min_hot)
+    
+    if not post_urls:
+        print("未获取到任何文章链接")
         return
     
-    print(f"获取到 {len(posts)} 篇文章，开始保存...")
-    save_posts(posts, save_path, file_format, group_by_author, save_images)
+    print(f"步骤1完成: 获取到 {len(post_urls)} 篇文章链接")
+    
+    # 步骤2: 调用成熟的保存单篇文章的方法依次保存
+    print(f"\n步骤2: 开始依次保存文章...")
+    
+    if group_by_author:
+        # 按作者分组保存
+        # 先解析每篇文章获取作者信息，然后分组
+        authors = {}  # {author_name: [url1, url2, ...]}
+        
+        print("正在解析文章以获取作者信息...")
+        for i, url in enumerate(post_urls, 1):
+            try:
+                print(f"[{i}/{len(post_urls)}] 正在解析作者信息: {url}")
+                # 只解析一次获取作者信息，不保存
+                post_info = parse_post(url, login_auth)
+                if post_info:
+                    author_name = post_info.get("author_name", "未知作者")
+                    if author_name not in authors:
+                        authors[author_name] = []
+                    authors[author_name].append(url)
+                else:
+                    # 解析失败，放到未知作者
+                    if "未知作者" not in authors:
+                        authors["未知作者"] = []
+                    authors["未知作者"].append(url)
+            except Exception as e:
+                print(f"解析文章失败 {url}: {e}")
+                # 即使解析失败，也尝试保存
+                if "未知作者" not in authors:
+                    authors["未知作者"] = []
+                authors["未知作者"].append(url)
+        
+        print(f"\n找到 {len(authors)} 位作者，开始保存...")
+        
+        # 为每位作者创建文件夹并保存文章
+        from .utils import sanitize_filename
+        total_saved = 0
+        for author_name, author_urls in authors.items():
+            author_name_safe = sanitize_filename(author_name)
+            author_path = os.path.join(save_path, f"作者_{author_name_safe}")
+            os.makedirs(author_path, exist_ok=True)
+            
+            print(f"\n正在保存作者 {author_name} 的 {len(author_urls)} 篇文章...")
+            
+            for i, url in enumerate(author_urls, 1):
+                try:
+                    print(f"[作者: {author_name}] [{i}/{len(author_urls)}] 正在保存: {url}")
+                    save_single_post(url, author_path, file_format, login_auth, save_images)
+                    total_saved += 1
+                except Exception as e:
+                    print(f"保存文章失败 {url}: {e}")
+        
+        print(f"\n总共保存了 {total_saved} 篇文章")
+    else:
+        # 不分组，全部保存在一个文件夹
+        print(f"开始保存 {len(post_urls)} 篇文章...")
+        
+        for i, url in enumerate(post_urls, 1):
+            try:
+                print(f"[{i}/{len(post_urls)}] 正在保存: {url}")
+                save_single_post(url, save_path, file_format, login_auth, save_images)
+            except Exception as e:
+                print(f"保存文章失败 {url}: {e}")
+    
+    print(f"\n所有文章保存完成！")
 
 
 def crawl_author(author_url, target_tags=None, save_path=None, file_format="txt",

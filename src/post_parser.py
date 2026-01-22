@@ -30,24 +30,43 @@ def insert_image_links_in_content(content_text, img_urls, illustration, blog_htm
     if not all_images:
         return content_text
     
-    # 方法1: 对于cont结构（pic在text之前）- 这是最常见的结构
-    print(f"方法1: 尝试匹配cont结构")
+    # 方法1: 对于cont结构（pic在text之前）或content结构（img在text之前）
+    print(f"方法1: 尝试匹配cont/content结构")
     try:
+        # 先尝试cont结构（模板2）
         cont_selectors = [
             '//body//div[@class="cont"]',
             '//body//div[contains(@class,"cont")]',
         ]
         
-        for cont_selector in cont_selectors:
-            cont_elements = blog_parse.xpath(cont_selector)
-            print(f"方法1: 使用选择器 {cont_selector}, 找到 {len(cont_elements)} 个cont元素")
-            if cont_elements:
+        # 再尝试content结构（模板1）
+        content_selectors = [
+            '//body//div[@class="content"]',
+            '//body//div[contains(@class,"content")]',
+        ]
+        
+        all_selectors = []
+        for selector in cont_selectors:
+            all_selectors.append(('cont', selector))
+        for selector in content_selectors:
+            all_selectors.append(('content', selector))
+        
+        for struct_type, parent_selector in all_selectors:
+            parent_elements = blog_parse.xpath(parent_selector)
+            print(f"方法1: 使用选择器 {parent_selector} ({struct_type}结构), 找到 {len(parent_elements)} 个元素")
+            if parent_elements:
                 result_parts = []
                 img_index = 0
                 
-                # 先提取pic区域的图片（按顺序）
-                pic_elements = blog_parse.xpath(f'{cont_selector}//div[@class="pic"]')
-                print(f"方法1: 找到 {len(pic_elements)} 个pic元素")
+                # 先提取图片区域的图片（按顺序）
+                # 对于cont结构，查找pic；对于content结构，查找img
+                if struct_type == 'cont':
+                    pic_elements = blog_parse.xpath(f'{parent_selector}//div[@class="pic"]')
+                    print(f"方法1: 找到 {len(pic_elements)} 个pic元素")
+                else:
+                    # content结构，查找img元素
+                    pic_elements = blog_parse.xpath(f'{parent_selector}//div[@class="img"]')
+                    print(f"方法1: 找到 {len(pic_elements)} 个img元素")
                 for pic in pic_elements:
                     # 从pic中提取图片URL（优先使用bigimgsrc，否则使用img src）
                     img_src = None
@@ -79,7 +98,7 @@ def insert_image_links_in_content(content_text, img_urls, illustration, blog_htm
                                     img_index += 1
                 
                 # 再提取text区域的文字
-                text_elements = blog_parse.xpath(f'{cont_selector}//div[@class="text"]')
+                text_elements = blog_parse.xpath(f'{parent_selector}//div[@class="text"]')
                 if text_elements:
                     # 按顺序提取text区域内的所有段落
                     p_elements = text_elements[0].xpath('.//p')
@@ -96,7 +115,7 @@ def insert_image_links_in_content(content_text, img_urls, illustration, blog_htm
                 
                 if result_parts:
                     result = '\n\n'.join(result_parts)
-                    print(f"方法1: 成功从cont结构提取内容并插入图片链接，共 {len(result_parts)} 个部分，图片链接数量: {img_index}")
+                    print(f"方法1: 成功从{struct_type}结构提取内容并插入图片链接，共 {len(result_parts)} 个部分，图片链接数量: {img_index}")
                     if "[图片链接:" in result:
                         print(f"方法1: 确认返回的内容中包含图片链接标记")
                         return result
@@ -112,10 +131,62 @@ def insert_image_links_in_content(content_text, img_urls, illustration, blog_htm
     # 方法2: 尝试从main-content-text区域按顺序提取内容和图片
     print(f"方法2: 尝试匹配main-content-text结构，template_id={template_id}")
     try:
+        # 对于模板1（content结构），需要先查找同级的img区域，再查找text区域
+        if template_id == 1:
+            # 查找content父元素
+            content_elements = blog_parse.xpath('//div[@class="content"]')
+            if content_elements:
+                result_parts = []
+                img_index = 0
+                
+                # 先查找同级的img区域（在content下，text之前）
+                img_elements = content_elements[0].xpath('.//div[@class="img"]')
+                print(f"方法2: 在content结构中找到 {len(img_elements)} 个img元素")
+                
+                for img_div in img_elements:
+                    # 从img中提取图片URL（优先使用bigimgsrc，否则使用img src）
+                    img_src = None
+                    # 尝试从a标签的bigimgsrc获取
+                    bigimgsrc_list = img_div.xpath('.//a/@bigimgsrc')
+                    if bigimgsrc_list:
+                        img_src = bigimgsrc_list[0]
+                    else:
+                        # 否则从img标签的src获取
+                        img_src_list = img_div.xpath('.//img/@src')
+                        if img_src_list:
+                            img_src = img_src_list[0]
+                    
+                    if img_src and img_index < len(all_images):
+                        img_src = img_src.replace('&amp;', '&')
+                        # 直接按顺序使用图片列表中的URL
+                        img_url = all_images[img_index]
+                        print(f"方法2: 插入图片链接 {img_index + 1}/{len(all_images)}: {img_url[:50]}...")
+                        result_parts.append(f"[图片链接: {img_url}]")
+                        img_index += 1
+                
+                # 再查找text区域
+                text_elements = content_elements[0].xpath('.//div[@class="text"]')
+                if text_elements:
+                    # 获取text区域内的所有p标签，按顺序
+                    p_elements = text_elements[0].xpath('.//p')
+                    print(f"方法2: 在content结构中找到 {len(p_elements)} 个p标签")
+                    
+                    for p in p_elements:
+                        p_text = ''.join(p.xpath('.//text()')).strip()
+                        if p_text:
+                            result_parts.append(p_text)
+                    
+                    if result_parts:
+                        result = '\n\n'.join(result_parts)
+                        print(f"方法2: 成功从content结构提取内容并插入图片链接，共 {len(result_parts)} 个部分，图片链接数量: {img_index}")
+                        if "[图片链接:" in result:
+                            print(f"方法2: 确认返回的内容中包含图片链接标记")
+                            return result
+        
         # 根据模板ID，优先使用对应的选择器
         template_selectors = [
             None,  # 模板0
-            '//div[@class="content"]/div[@class="text"]',  # 模板1
+            '//div[@class="content"]/div[@class="text"]',  # 模板1（已在上面的if中处理）
             '//div[@class="cont"]/div[@class="text"]',  # 模板2
             '//div[@class="cont"]/div[@class]',  # 模板3
             '//div[@class="txtcont"]',  # 模板4
@@ -126,7 +197,7 @@ def insert_image_links_in_content(content_text, img_urls, illustration, blog_htm
         
         # 构建选择器列表：先尝试模板对应的选择器，再尝试其他选择器
         text_selectors = []
-        if template_id < len(template_selectors) and template_selectors[template_id]:
+        if template_id < len(template_selectors) and template_selectors[template_id] and template_id != 1:
             text_selectors.append(template_selectors[template_id])
         
         # 添加其他可能的选择器
@@ -181,18 +252,34 @@ def insert_image_links_in_content(content_text, img_urls, illustration, blog_htm
                             if p_text:
                                 result_parts.append(p_text)
                     
-                    # 如果成功提取了内容，返回结果
+                    # 如果成功提取了内容，检查是否需要返回
                     if result_parts:
                         result = '\n\n'.join(result_parts)
                         print(f"成功从text区域提取内容并插入图片链接，共 {len(result_parts)} 个部分，图片链接数量: {img_index}")
+                        
+                        # 如果还有未插入的图片链接，在末尾添加
+                        if img_index < len(all_images):
+                            remaining_images = all_images[img_index:]
+                            print(f"还有 {len(remaining_images)} 张图片未插入，将在末尾添加")
+                            image_links_text = "\n\n图片链接：\n"
+                            for i, img_url in enumerate(remaining_images, 1):
+                                image_links_text += f"图{i}: {img_url}\n"
+                            result = result + image_links_text
+                        
                         # 检查结果中是否包含图片链接
-                        if "[图片链接:" in result:
+                        has_image_links = "[图片链接:" in result or "图片链接：" in result
+                        if has_image_links:
                             print(f"确认: 返回的内容中包含图片链接标记")
                             # 打印结果的前200个字符，用于调试
                             print(f"返回内容预览: {result[:200]}...")
+                            return result
                         else:
-                            print(f"警告: 返回的内容中不包含图片链接标记")
-                        return result
+                            # 如果没有插入图片链接，继续尝试方法3
+                            # 如果提取的内容太短（小于原始内容的30%），也继续尝试方法3
+                            if len(result) < len(content_text) * 0.3:
+                                print(f"警告: 提取的内容太短（{len(result)} < {len(content_text) * 0.3:.0f}），继续尝试方法3")
+                            else:
+                                print(f"警告: 返回的内容中不包含图片链接标记，继续尝试方法3")
                     else:
                         print(f"警告: 从text区域提取到p标签，但没有提取到任何内容")
                 else:
@@ -204,11 +291,15 @@ def insert_image_links_in_content(content_text, img_urls, illustration, blog_htm
         pass
     
     # 方法3: 如果无法识别位置，在内容末尾添加图片链接（保持原有行为）
+    # 这是最后的后备方案，确保图片链接总是被添加
     if all_images:
+        print(f"方法3: 在内容末尾添加图片链接（后备方案）")
         image_links_text = "\n\n图片链接：\n"
         for i, img_url in enumerate(all_images, 1):
             image_links_text += f"图{i}: {img_url}\n"
-        return content_text + image_links_text
+        result = content_text + image_links_text
+        print(f"方法3: 已添加 {len(all_images)} 个图片链接到内容末尾")
+        return result
     
     return content_text
 
@@ -694,8 +785,8 @@ def parse_post(url, login_auth=None, login_key=None):
         # 根据模板ID获取对应的HTML内容区域
         content_selectors = [
             None,  # 模板0
-            '//div[@class="content"]/div[@class="text"]',  # 模板1
-            '//div[@class="cont"]/div[@class="text"]',  # 模板2
+            '//div[@class="content"]',  # 模板1：提取整个content区域（包含img和text）
+            '//div[@class="cont"]',  # 模板2：提取整个cont区域（包含pic和text）
             '//div[@class="cont"]/div[@class]',  # 模板3
             '//div[@class="txtcont"]',  # 模板4
             '//div[@class="text"]',  # 模板5
@@ -704,9 +795,18 @@ def parse_post(url, login_auth=None, login_key=None):
         ]
         
         if template_id > 0 and template_id < len(content_selectors) and content_selectors[template_id]:
-            # 对于模板2（cont结构），需要提取整个cont区域（包含pic和text）
-            if template_id == 2:
-                # 模板2：提取整个cont区域
+            # 对于模板1和模板2，需要提取整个父区域（包含图片和文字）
+            if template_id == 1:
+                # 模板1：提取整个content区域（包含img和text）
+                content_elements = blog_parse.xpath('//div[@class="content"]')
+                if content_elements:
+                    from lxml.html import tostring
+                    html_content = tostring(content_elements[0], encoding='unicode', pretty_print=False)
+                    print(f"从模板{template_id}提取到HTML内容（content区域），长度: {len(html_content)}")
+                else:
+                    print(f"警告: 模板{template_id}的content区域没有匹配到元素")
+            elif template_id == 2:
+                # 模板2：提取整个cont区域（包含pic和text）
                 cont_elements = blog_parse.xpath('//div[@class="cont"]')
                 if cont_elements:
                     from lxml.html import tostring
