@@ -15,6 +15,204 @@ from .config import LOGIN_KEY, DEFAULT_LOGIN_AUTH
 from .parse_template import matcher, get_content
 
 
+def insert_image_links_in_content(content_text, img_urls, illustration, blog_html, blog_parse, template_id=0):
+    """
+    将图片链接插入到内容中的正确位置
+    :param content_text: 提取的文本内容
+    :param img_urls: 图片URL列表
+    :param illustration: 文章中的图片列表
+    :param blog_html: HTML源码
+    :param blog_parse: 解析后的HTML树
+    :param template_id: 模板ID
+    :return: 插入图片链接后的内容
+    """
+    all_images = list(dict.fromkeys(img_urls + illustration))
+    if not all_images:
+        return content_text
+    
+    # 方法1: 对于cont结构（pic在text之前）- 这是最常见的结构
+    print(f"方法1: 尝试匹配cont结构")
+    try:
+        cont_selectors = [
+            '//body//div[@class="cont"]',
+            '//body//div[contains(@class,"cont")]',
+        ]
+        
+        for cont_selector in cont_selectors:
+            cont_elements = blog_parse.xpath(cont_selector)
+            print(f"方法1: 使用选择器 {cont_selector}, 找到 {len(cont_elements)} 个cont元素")
+            if cont_elements:
+                result_parts = []
+                img_index = 0
+                
+                # 先提取pic区域的图片（按顺序）
+                pic_elements = blog_parse.xpath(f'{cont_selector}//div[@class="pic"]')
+                print(f"方法1: 找到 {len(pic_elements)} 个pic元素")
+                for pic in pic_elements:
+                    # 从pic中提取图片URL（优先使用bigimgsrc，否则使用img src）
+                    img_src = None
+                    # 尝试从a标签的bigimgsrc获取
+                    bigimgsrc_list = pic.xpath('.//a/@bigimgsrc')
+                    if bigimgsrc_list:
+                        img_src = bigimgsrc_list[0]
+                    else:
+                        # 否则从img标签的src获取
+                        img_src_list = pic.xpath('.//img/@src')
+                        if img_src_list:
+                            img_src = img_src_list[0]
+                    
+                    if img_src and img_index < len(all_images):
+                        img_src = img_src.replace('&amp;', '&')
+                        match = re.search(r'(https?://imglf\d*\.lf\d+\.net/img/[^?]*)', img_src)
+                        if match:
+                            clean_url = match.group(1)
+                            if '?imageView' in clean_url:
+                                clean_url = clean_url.split('?imageView')[0]
+                            elif '?' in clean_url:
+                                clean_url = clean_url.split('?')[0]
+                            # 在图片列表中找到匹配的URL（按顺序）
+                            if img_index < len(all_images):
+                                img_url = all_images[img_index]
+                                url_clean = img_url.split('?imageView')[0].split('?')[0]
+                                if clean_url == url_clean or clean_url in img_url or img_url in clean_url:
+                                    result_parts.append(f"[图片链接: {img_url}]")
+                                    img_index += 1
+                
+                # 再提取text区域的文字
+                text_elements = blog_parse.xpath(f'{cont_selector}//div[@class="text"]')
+                if text_elements:
+                    # 按顺序提取text区域内的所有段落
+                    p_elements = text_elements[0].xpath('.//p')
+                    if p_elements:
+                        for p in p_elements:
+                            p_text = ''.join(p.xpath('.//text()')).strip()
+                            if p_text:
+                                result_parts.append(p_text)
+                    else:
+                        # 如果没有p标签，直接提取所有文本
+                        text_content = ''.join(text_elements[0].xpath('.//text()')).strip()
+                        if text_content:
+                            result_parts.append(text_content)
+                
+                if result_parts:
+                    result = '\n\n'.join(result_parts)
+                    print(f"方法1: 成功从cont结构提取内容并插入图片链接，共 {len(result_parts)} 个部分，图片链接数量: {img_index}")
+                    if "[图片链接:" in result:
+                        print(f"方法1: 确认返回的内容中包含图片链接标记")
+                        return result
+                    else:
+                        print(f"方法1: 警告: 返回的内容中不包含图片链接标记，继续尝试方法2")
+                        # 如果方法1没有插入图片链接，继续尝试方法2
+    except Exception as e:
+        print(f"处理cont结构时出错: {e}")
+        import traceback
+        traceback.print_exc()
+        pass
+    
+    # 方法2: 尝试从main-content-text区域按顺序提取内容和图片
+    print(f"方法2: 尝试匹配main-content-text结构，template_id={template_id}")
+    try:
+        # 根据模板ID，优先使用对应的选择器
+        template_selectors = [
+            None,  # 模板0
+            '//div[@class="content"]/div[@class="text"]',  # 模板1
+            '//div[@class="cont"]/div[@class="text"]',  # 模板2
+            '//div[@class="cont"]/div[@class]',  # 模板3
+            '//div[@class="txtcont"]',  # 模板4
+            '//div[@class="text"]',  # 模板5
+            '//div[@class="text"]',  # 模板6
+            '//div[contains(@class,"post-ctc box")]',  # 模板7
+        ]
+        
+        # 构建选择器列表：先尝试模板对应的选择器，再尝试其他选择器
+        text_selectors = []
+        if template_id < len(template_selectors) and template_selectors[template_id]:
+            text_selectors.append(template_selectors[template_id])
+        
+        # 添加其他可能的选择器
+        text_selectors.extend([
+            '//body//div[contains(@class,"main")]//div[@class="content"]//div[@class="text"]',
+            '//body//div[contains(@class,"main-content")]//div[@class="text"]',
+            '//body//div[contains(@class,"main")]//div[contains(@class,"content")]//div[contains(@class,"text")]',
+        ])
+        
+        for text_selector in text_selectors:
+            text_elements = blog_parse.xpath(text_selector)
+            print(f"方法2: 尝试使用选择器: {text_selector}, 找到 {len(text_elements)} 个text元素")
+            if text_elements:
+                result_parts = []
+                img_index = 0
+                
+                # 获取text区域内的所有p标签，按顺序
+                p_elements = blog_parse.xpath(f'{text_selector}//p')
+                
+                print(f"尝试使用选择器: {text_selector}, 找到 {len(p_elements)} 个p标签")
+                
+                if p_elements:
+                    for p_idx, p in enumerate(p_elements):
+                        # 检查p标签内是否有img
+                        img_in_p = p.xpath('.//img')
+                        if img_in_p:
+                            print(f"找到包含图片的p标签 (第{p_idx+1}个)，图片数量: {len(img_in_p)}, 当前img_index: {img_index}")
+                            # 先提取图片前的文本
+                            before_text = ''.join(p.xpath('.//text()[preceding::img]')).strip()
+                            if before_text:
+                                result_parts.append(before_text)
+                            
+                            # 插入图片链接（按顺序）
+                            # 即使p标签内只有img，没有其他文本，也要插入图片链接
+                            for img in img_in_p:
+                                if img_index >= len(all_images):
+                                    print(f"警告: img_index ({img_index}) >= all_images长度 ({len(all_images)})")
+                                    break
+                                # 直接按顺序使用图片列表中的URL，不需要匹配
+                                img_url = all_images[img_index]
+                                print(f"插入图片链接 {img_index + 1}/{len(all_images)}: {img_url[:50]}...")
+                                result_parts.append(f"[图片链接: {img_url}]")
+                                img_index += 1
+                            
+                            # 提取图片后的文本
+                            after_text = ''.join(p.xpath('.//text()[following::img]')).strip()
+                            if after_text:
+                                result_parts.append(after_text)
+                        else:
+                            # 没有图片，直接提取文本
+                            p_text = ''.join(p.xpath('.//text()')).strip()
+                            if p_text:
+                                result_parts.append(p_text)
+                    
+                    # 如果成功提取了内容，返回结果
+                    if result_parts:
+                        result = '\n\n'.join(result_parts)
+                        print(f"成功从text区域提取内容并插入图片链接，共 {len(result_parts)} 个部分，图片链接数量: {img_index}")
+                        # 检查结果中是否包含图片链接
+                        if "[图片链接:" in result:
+                            print(f"确认: 返回的内容中包含图片链接标记")
+                            # 打印结果的前200个字符，用于调试
+                            print(f"返回内容预览: {result[:200]}...")
+                        else:
+                            print(f"警告: 返回的内容中不包含图片链接标记")
+                        return result
+                    else:
+                        print(f"警告: 从text区域提取到p标签，但没有提取到任何内容")
+                else:
+                    print(f"警告: 使用选择器 {text_selector} 没有找到p标签")
+    except Exception as e:
+        print(f"处理main-content-text结构时出错: {e}")
+        import traceback
+        traceback.print_exc()
+        pass
+    
+    # 方法3: 如果无法识别位置，在内容末尾添加图片链接（保持原有行为）
+    if all_images:
+        image_links_text = "\n\n图片链接：\n"
+        for i, img_url in enumerate(all_images, 1):
+            image_links_text += f"图{i}: {img_url}\n"
+        return content_text + image_links_text
+    
+    return content_text
+
+
 def get_time_and_title_from_archive(blog_url, author_id, login_key, login_auth):
     """
     从归档页面获取文章时间和标题（参考l10_blogs_txt.py）
@@ -459,6 +657,24 @@ def parse_post(url, login_auth=None, login_key=None):
         illustration = []
         img_urls = []
     
+    # 将图片链接按顺序插入到内容中的正确位置
+    # 需要根据HTML结构，在图片位置插入图片链接
+    if img_urls or illustration:
+        print(f"开始插入图片链接，原始内容长度: {len(content_text)}, 图片数量: {len(img_urls) + len(illustration)}")
+        content_with_images = insert_image_links_in_content(content_text, img_urls, illustration, blog_html, blog_parse, template_id)
+        # 如果插入图片链接后内容发生变化，说明成功插入了
+        if content_with_images != content_text:
+            print(f"已成功插入图片链接到内容中，新内容长度: {len(content_with_images)}")
+            # 检查新内容中是否包含图片链接
+            if "[图片链接:" in content_with_images:
+                print(f"确认: 新内容中包含图片链接标记")
+            else:
+                print(f"警告: 新内容中不包含图片链接标记，可能插入失败")
+        else:
+            print(f"警告: 图片链接未插入，可能未匹配到正确的text区域")
+    else:
+        content_with_images = content_text
+    
     return {
         "url": url,
         "title": title,
@@ -466,7 +682,7 @@ def parse_post(url, login_auth=None, login_key=None):
         "author_ip": author_ip,
         "publish_time": publish_time,
         "tags": tags,
-        "content": content_text,
+        "content": content_with_images,
         "img_urls": img_urls,
         "illustration": illustration
     }

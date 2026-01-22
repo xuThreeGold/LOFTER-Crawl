@@ -32,22 +32,17 @@ def save_post_txt(post_info, save_path, save_images=True):
     file_head += f"原文链接：{url}\n"
     
     # 构建文件内容
+    # content中已经包含了按位置插入的图片链接，不需要再在末尾添加
     content = post_info.get("content", "")
     
-    # 处理图片
+    # 处理图片（用于下载）
     img_urls = post_info.get("img_urls", [])
     illustration = post_info.get("illustration", [])
     # 合并并去重，避免重复下载
     all_images = list(dict.fromkeys(img_urls + illustration))  # 使用dict.fromkeys保持顺序并去重
     
-    image_links_text = ""
-    if all_images:
-        image_links_text = "\n\n图片链接：\n"
-        for i, img_url in enumerate(all_images, 1):
-            image_links_text += f"图{i}: {img_url}\n"
-    
-    # 构建完整内容
-    full_content = file_head + "\n\n" + content + image_links_text
+    # 构建完整内容（content中已经包含了图片链接）
+    full_content = file_head + "\n\n" + content
     
     # 生成文件名：只使用标题内容
     title_safe = sanitize_filename(title)
