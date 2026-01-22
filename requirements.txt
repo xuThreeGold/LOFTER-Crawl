@@ -6,6 +6,7 @@ requests>=2.27.1          # HTTP请求库
 lxml>=5.0.0               # XML/HTML解析库（使用新版本以支持Python 3.12预编译wheel）
 urllib3>=1.26.9           # URL处理库（requests的依赖）
 html2text>=2020.1.16      # HTML转文本库
+pyyaml>=6.0               # YAML处理库（用于Markdown Front-Matter）
 
 # 注意：
 # 1. 如果使用 Python 3.12，lxml>=5.0.0 通常有预编译wheel，无需编译

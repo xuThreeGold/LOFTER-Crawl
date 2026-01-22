@@ -688,6 +688,57 @@ def parse_post(url, login_auth=None, login_key=None):
     else:
         content_with_images = content_text
     
+    # 保存原始HTML内容区域（用于markdown转换）
+    html_content = ""
+    try:
+        # 根据模板ID获取对应的HTML内容区域
+        content_selectors = [
+            None,  # 模板0
+            '//div[@class="content"]/div[@class="text"]',  # 模板1
+            '//div[@class="cont"]/div[@class="text"]',  # 模板2
+            '//div[@class="cont"]/div[@class]',  # 模板3
+            '//div[@class="txtcont"]',  # 模板4
+            '//div[@class="text"]',  # 模板5
+            '//div[@class="text"]',  # 模板6
+            '//div[contains(@class,"post-ctc box")]',  # 模板7
+        ]
+        
+        if template_id > 0 and template_id < len(content_selectors) and content_selectors[template_id]:
+            # 对于模板2（cont结构），需要提取整个cont区域（包含pic和text）
+            if template_id == 2:
+                # 模板2：提取整个cont区域
+                cont_elements = blog_parse.xpath('//div[@class="cont"]')
+                if cont_elements:
+                    from lxml.html import tostring
+                    html_content = tostring(cont_elements[0], encoding='unicode', pretty_print=False)
+                    print(f"从模板{template_id}提取到HTML内容（cont区域），长度: {len(html_content)}")
+                else:
+                    print(f"警告: 模板{template_id}的cont区域没有匹配到元素")
+            else:
+                content_elements = blog_parse.xpath(content_selectors[template_id])
+                if content_elements:
+                    # 获取第一个匹配元素的HTML
+                    from lxml.html import tostring
+                    html_content = tostring(content_elements[0], encoding='unicode', pretty_print=False)
+                    print(f"从模板{template_id}提取到HTML内容，长度: {len(html_content)}")
+                else:
+                    print(f"警告: 模板{template_id}的选择器 {content_selectors[template_id]} 没有匹配到元素")
+        elif template_id == 0:
+            # 对于模板0，尝试从main-content或main-cont提取
+            selectors = [
+                '//body//div[contains(@class,"main")]//div[@class="content"]',
+                '//body//div[contains(@class,"main")]//div[contains(@class,"content")]',
+                '//body//div[contains(@class,"main-cont")]',
+            ]
+            for selector in selectors:
+                content_elements = blog_parse.xpath(selector)
+                if content_elements:
+                    from lxml.html import tostring
+                    html_content = tostring(content_elements[0], encoding='unicode', pretty_print=False)
+                    break
+    except Exception as e:
+        print(f"提取HTML内容时出错: {e}")
+    
     return {
         "url": url,
         "title": title,
@@ -696,6 +747,7 @@ def parse_post(url, login_auth=None, login_key=None):
         "publish_time": publish_time,
         "tags": tags,
         "content": content_with_images,
+        "html_content": html_content,  # 保存原始HTML内容用于markdown转换
         "img_urls": img_urls,
         "illustration": illustration
     }
