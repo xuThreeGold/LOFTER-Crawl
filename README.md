@@ -16,7 +16,11 @@
    - 支持TXT和MD两种格式
    - 按发表时间排序合并
    - 每个文件作为一章，标题为"第XX章-文件名"
-6. **文件格式**：
+6. **Markdown格式转换**：将Markdown文件转换为其他格式
+   - 支持转换为PDF、EPUB、TXT、DOCX格式
+   - 可指定输入文件和输出路径
+   - 默认输出到result目录
+7. **文件格式**：
    - TXT格式：图片链接保存在txt中，图片文件单独保存
    - Markdown格式：图片直接嵌入文件
 
@@ -58,6 +62,21 @@ cd LOFTER-Crawl
 ```bash
 pip install -r requirements.txt
 ```
+
+**Markdown格式转换功能（可选）**：
+
+如果需要使用 `md2other` 命令进行格式转换，需要额外安装依赖：
+
+```bash
+# 进入md2other目录
+cd md2other
+pip install -r requirements.txt
+```
+
+**注意**：
+- PDF、EPUB、DOCX格式转换需要安装Pandoc（https://pandoc.org/installing.html）
+- TXT格式转换无需额外依赖，可直接使用
+- 如果遇到网络问题，可以使用conda安装：`conda install -c conda-forge markdown pypandoc`
 
 **如果遇到编译错误**（特别是 Windows 用户）：
 
@@ -109,6 +128,7 @@ python run.py tag --help
 python run.py author --help
 python run.py tag-author --help
 python run.py merge --help
+python run.py md2other --help
 ```
 
 ## 使用方法
@@ -226,6 +246,40 @@ python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" -o "D:
 python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" -f md -o "D:\合并结果" -n "合并后的小说"
 ```
 
+### 6. Markdown格式转换
+
+```bash
+python run.py md2other <Markdown文件路径> --format <格式> [选项]
+```
+
+功能：将Markdown文件转换为PDF、EPUB、TXT、DOCX等格式。
+
+示例：
+```bash
+# 转换为PDF（输出到result目录）
+python run.py md2other "result\作者_一朵独自生存的花椰菜.md" --format pdf
+
+# 转换为EPUB
+python run.py md2other "result\作者_一朵独自生存的花椰菜.md" --format epub
+
+# 转换为DOCX
+python run.py md2other "result\作者_一朵独自生存的花椰菜.md" --format docx
+
+# 转换为TXT
+python run.py md2other "result\作者_一朵独自生存的花椰菜.md" --format txt
+
+# 指定输出文件路径
+python run.py md2other "result\作者_一朵独自生存的花椰菜.md" --format pdf --output "output\小说.pdf"
+
+# 指定输出目录
+python run.py md2other "result\作者_一朵独自生存的花椰菜.md" --format epub --output-dir "D:\输出"
+```
+
+**注意**：
+- PDF、EPUB、DOCX格式转换需要安装Pandoc（https://pandoc.org/installing.html）
+- TXT格式转换无需额外依赖，可直接使用
+- 转换时如果遇到图片路径警告，不影响转换结果，只是图片可能不会包含在输出文件中
+
 ## 超参数说明
 
 ### 通用超参数
@@ -254,6 +308,20 @@ python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" -f md 
 | `--tags` | 列表 | `None` | 目标tags列表，只爬取包含这些tag的文章（可指定多个） |
 | `--start-time` | 字符串 | `None` | 开始时间，格式：`YYYY-MM-DD`（如：`2024-01-01`） |
 | `--end-time` | 字符串 | `None` | 结束时间，格式：`YYYY-MM-DD`（如：`2024-12-31`） |
+
+### Markdown格式转换专用超参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--format` 或 `-f` | 选择项 | **必需** | 输出格式：`pdf`、`epub`、`txt`、`docx` |
+| `--output` 或 `-o` | 字符串 | `result/文件名.格式` | 输出文件路径（可选） |
+| `--output-dir` 或 `-d` | 字符串 | `result` | 输出目录（当未指定--output时使用） |
+
+**格式说明**：
+- `pdf`: 便携式文档格式，需要安装Pandoc和pypandoc
+- `epub`: 电子书格式，需要安装Pandoc和pypandoc
+- `txt`: 纯文本格式，无需额外依赖
+- `docx`: Word文档格式，需要安装Pandoc和pypandoc
 
 ### 配置超参数
 

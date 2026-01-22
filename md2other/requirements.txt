@@ -1,0 +1,17 @@
+# Markdown format conversion tool dependencies
+
+# Core conversion library (recommended: pypandoc, supports multiple formats)
+pypandoc>=1.11
+
+# PDF conversion alternative (optional)
+# pdfkit>=1.0.0
+# Note: pdfkit requires wkhtmltopdf: https://wkhtmltopdf.org/downloads.html
+
+# TXT conversion
+markdown>=3.4.0
+html2text>=2020.1.16
+
+# Note: pypandoc requires system installation of pandoc
+# Windows: https://github.com/jgm/pandoc/releases
+# Linux: sudo apt-get install pandoc
+# macOS: brew install pandoc

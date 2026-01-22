@@ -336,6 +336,16 @@ def main():
     parser_merge.add_argument("-f", "--format", type=str, choices=["txt", "md"], default="txt",
                              help="文件格式：txt或md（默认为txt）")
     
+    # 命令6: Markdown格式转换
+    parser_md2other = subparsers.add_parser("md2other", help="将Markdown文件转换为其他格式（PDF、EPUB、TXT、DOCX）")
+    parser_md2other.add_argument("input_file", type=str, help="输入的Markdown文件路径")
+    parser_md2other.add_argument("-f", "--format", type=str, choices=["pdf", "epub", "txt", "docx"],
+                                required=True, help="输出格式: pdf, epub, txt, docx")
+    parser_md2other.add_argument("-o", "--output", type=str, default=None,
+                                help="输出文件路径（可选，默认在result目录下）")
+    parser_md2other.add_argument("-d", "--output-dir", type=str, default=None,
+                                help="输出目录（默认: result）")
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -358,6 +368,66 @@ def main():
             output_filename=args.name,
             file_format=args.format
         )
+        return
+    
+    if args.command == "md2other":
+        # md2other命令
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        md2other_path = os.path.join(project_root, "md2other")
+        if md2other_path not in sys.path:
+            sys.path.insert(0, md2other_path)
+        
+        # 导入md2other模块
+        from md2other import convert_md_to_pdf, convert_md_to_epub, convert_md_to_txt, convert_md_to_docx
+        from pathlib import Path
+        
+        # 检查输入文件是否存在
+        input_path = Path(args.input_file)
+        if not input_path.exists():
+            print(f"错误: 输入文件不存在: {args.input_file}")
+            sys.exit(1)
+        
+        if not input_path.is_file():
+            print(f"错误: 输入路径不是文件: {args.input_file}")
+            sys.exit(1)
+        
+        # 确定输出文件路径
+        if args.output:
+            output_path = Path(args.output)
+        else:
+            # 默认输出到 result 目录（相对于项目根目录）
+            if args.output_dir:
+                output_dir = Path(args.output_dir)
+            else:
+                output_dir = Path(project_root) / "result"
+            
+            output_dir.mkdir(parents=True, exist_ok=True)
+            output_path = output_dir / f"{input_path.stem}.{args.format}"
+        
+        # 确保输出目录存在
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        print(f"输入文件: {input_path}")
+        print(f"输出格式: {args.format}")
+        print(f"输出文件: {output_path}")
+        print("正在转换...")
+        
+        # 根据格式调用相应的转换函数
+        success = False
+        if args.format == 'pdf':
+            success = convert_md_to_pdf(str(input_path), str(output_path))
+        elif args.format == 'epub':
+            success = convert_md_to_epub(str(input_path), str(output_path))
+        elif args.format == 'txt':
+            success = convert_md_to_txt(str(input_path), str(output_path))
+        elif args.format == 'docx':
+            success = convert_md_to_docx(str(input_path), str(output_path))
+        
+        if success:
+            print(f"✓ 转换成功: {output_path}")
+        else:
+            print(f"✗ 转换失败")
+            sys.exit(1)
         return
     
     # 设置通用参数（其他命令需要）
