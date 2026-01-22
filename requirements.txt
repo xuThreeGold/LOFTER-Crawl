@@ -1,0 +1,8 @@
+requests==2.27.1
+lxml==4.8.0
+urllib3==1.26.9
+html2text
+json5
+numpy
+markdown
+Pillow
