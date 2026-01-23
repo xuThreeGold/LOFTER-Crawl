@@ -1035,7 +1035,7 @@ def add_hyperlink(paragraph, text: str, url: str):
     return hyperlink
 
 
-def parse_markdown_to_docx_elements(md_text: str) -> List[dict]:
+def parse_markdown_to_docx_elements(md_text: str, md_file: str = None) -> List[dict]:
     """解析 Markdown 文本，返回结构化元素列表，特别注意链接处理"""
     html = markdown_to_html(md_text)
     soup = BeautifulSoup(html, 'html.parser')
@@ -1154,8 +1154,9 @@ def convert_md_to_docx(md_file: str, output_file: str) -> bool:
     - 特别注意目录跳转和网页链接的保存
     """
     try:
+        md_path = Path(md_file)
         md_text = read_markdown(md_file)
-        elements = parse_markdown_to_docx_elements(md_text)
+        elements = parse_markdown_to_docx_elements(md_text, md_file)
         
         doc = Document()
         
@@ -1329,16 +1330,14 @@ def convert_md_to_docx(md_file: str, output_file: str) -> bool:
                 src = elem['src']
                 alt = elem.get('alt', '图片')
                 
-                # 处理本地图片
-                if os.path.exists(src):
-                    try:
-                        doc.add_picture(src, width=Inches(5))
-                    except Exception as e:
-                        para = doc.add_paragraph(f"[图片: {alt}]")
-                        para.add_run(f" (无法加载: {str(e)})")
+                # 解码 URL 编码的路径
+                try:
+                    decoded_src = unquote(src)
+                except Exception:
+                    decoded_src = src
                 
                 # 处理网络图片（需要下载）
-                elif src.startswith(('http://', 'https://')):
+                if src.startswith(('http://', 'https://')):
                     try:
                         try:
                             import requests
@@ -1358,11 +1357,57 @@ def convert_md_to_docx(md_file: str, output_file: str) -> bool:
                         para = doc.add_paragraph(f"[图片: {alt}]")
                         para.add_run(f" (无法下载: {str(e)})")
                 
-                # 其他情况
+                # 处理本地图片
                 else:
-                    para = doc.add_paragraph(f"[图片: {alt}]")
-                    if src:
-                        para.add_run(f" (路径: {src})")
+                    # 获取 Markdown 文件所在目录
+                    md_path = Path(md_file)
+                    md_dir = md_path.parent
+                    
+                    # 尝试多种路径解析方式
+                    possible_paths = []
+                    # 1. 原始路径（绝对路径或相对于当前工作目录）
+                    possible_paths.append(src)
+                    # 2. 解码后的路径
+                    possible_paths.append(decoded_src)
+                    # 3. 相对于 Markdown 文件的路径
+                    possible_paths.append(str(md_dir / src))
+                    possible_paths.append(str(md_dir / decoded_src))
+                    # 4. 相对于 Markdown 文件所在目录的 images 子目录
+                    possible_paths.append(str(md_dir / 'images' / src))
+                    possible_paths.append(str(md_dir / 'images' / decoded_src))
+                    # 5. 尝试在 result 目录下查找（如果 Markdown 文件在 result 目录下）
+                    if 'result' in str(md_dir):
+                        # 在同名目录下查找（例如：result/作者_吃瓜惹/图片文件）
+                        author_dir = md_dir
+                        possible_paths.append(str(author_dir / src))
+                        possible_paths.append(str(author_dir / decoded_src))
+                        # 在 result 的父目录查找
+                        parent_dir = md_dir.parent
+                        possible_paths.append(str(parent_dir / src))
+                        possible_paths.append(str(parent_dir / decoded_src))
+                        # 在 LOFTER-Crawl 目录下查找
+                        crawl_dir = parent_dir.parent if parent_dir.name == 'result' else parent_dir
+                        possible_paths.append(str(crawl_dir / src))
+                        possible_paths.append(str(crawl_dir / decoded_src))
+                    
+                    img_found = False
+                    for img_path in possible_paths:
+                        # 去重并检查路径
+                        img_path = os.path.normpath(img_path)
+                        if os.path.exists(img_path) and os.path.isfile(img_path):
+                            try:
+                                doc.add_picture(img_path, width=Inches(5))
+                                img_found = True
+                                print(f"  找到图片: {img_path}")
+                                break
+                            except Exception as e:
+                                # 如果加载失败，继续尝试下一个路径
+                                continue
+                    
+                    if not img_found:
+                        para = doc.add_paragraph(f"[图片: {alt}]")
+                        if src:
+                            para.add_run(f" (未找到: {decoded_src})")
         
         out_path = Path(output_file)
         out_path.parent.mkdir(parents=True, exist_ok=True)
