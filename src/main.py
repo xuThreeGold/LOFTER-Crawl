@@ -5,7 +5,9 @@ LOFTER爬虫主程序
 import os
 import sys
 import time
+import json
 import argparse
+from pathlib import Path
 from .config import DEFAULT_LOGIN_AUTH, DEFAULT_SAVE_PATH
 from .post_parser import parse_post
 from .tag_crawler import crawl_tag_posts
@@ -313,6 +315,106 @@ def add_common_args(parser):
                         help="不按作者分组（所有文件保存在一个文件夹）")
 
 
+def get_auth_config_path():
+    """
+    获取授权码配置文件的路径
+    :return: 配置文件路径
+    """
+    # 配置文件保存在项目根目录下的 .lofter_auth.json
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(project_root, ".lofter_auth.json")
+
+
+def load_saved_auth():
+    """
+    从配置文件加载保存的授权码
+    :return: 授权码字符串，如果不存在则返回None
+    """
+    auth_file = get_auth_config_path()
+    if os.path.exists(auth_file):
+        try:
+            with open(auth_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                return config.get('login_auth', None)
+        except Exception as e:
+            print(f"读取授权码配置文件失败: {e}")
+            return None
+    return None
+
+
+def save_auth(auth_code):
+    """
+    保存授权码到配置文件
+    :param auth_code: 授权码字符串
+    """
+    auth_file = get_auth_config_path()
+    try:
+        config = {'login_auth': auth_code}
+        with open(auth_file, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        print(f"授权码已保存到: {auth_file}")
+    except Exception as e:
+        print(f"保存授权码失败: {e}")
+
+
+def get_login_auth_interactive():
+    """
+    交互式获取登录授权码（自动检查已保存的授权码）
+    :return: 授权码字符串，如果用户选择不提供则返回None
+    """
+    print("\n" + "="*60)
+    print("登录授权码设置")
+    print("="*60)
+    
+    # 自动检查是否有保存的授权码
+    saved_auth = load_saved_auth()
+    
+    if saved_auth:
+        # 显示当前保存的授权码（只显示前后部分，中间用...代替）
+        auth_display = saved_auth[:20] + "..." + saved_auth[-10:] if len(saved_auth) > 30 else saved_auth
+        print(f"检测到已保存的授权码: {auth_display}")
+        print(f"完整授权码长度: {len(saved_auth)} 字符")
+        
+        # 询问是否需要修改
+        need_modify = input("\n是否需要修改授权码？(y/n，直接回车默认n): ").strip().lower()
+        
+        if need_modify and need_modify in ['y', 'yes']:
+            # 需要修改，提示输入新的授权码
+            new_auth = input("请输入新的授权码（直接回车保持原值）: ").strip()
+            if new_auth:
+                save_auth(new_auth)
+                print("授权码已更新")
+                return new_auth
+            else:
+                print("未输入新授权码，保持原值")
+                return saved_auth
+        else:
+            # 不需要修改，使用保存的授权码
+            print("使用已保存的授权码")
+            return saved_auth
+    else:
+        # 没有保存的授权码，询问是否有授权码
+        has_auth = input("您是否有登录授权码？(y/n，直接回车默认n): ").strip().lower()
+        
+        if not has_auth or has_auth == 'n' or has_auth == 'no':
+            print("未提供授权码，程序将继续运行（某些功能可能需要授权码才能正常使用）")
+            return None
+        
+        if has_auth not in ['y', 'yes']:
+            print("未提供授权码，程序将继续运行")
+            return None
+        
+        # 用户有授权码，提示输入
+        new_auth = input("请输入授权码（直接回车跳过）: ").strip()
+        if new_auth:
+            save_auth(new_auth)
+            print("授权码已保存")
+            return new_auth
+        else:
+            print("未输入授权码，将不使用授权码")
+            return None
+
+
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(description="LOFTER爬虫工具")
@@ -378,6 +480,16 @@ def main():
     if not args.command:
         parser.print_help()
         return
+    
+    # 对于需要登录的命令，交互式获取授权码（如果命令行参数未提供）
+    interactive_auth = None
+    if args.command not in ["merge", "md2other"]:
+        # merge 和 md2other 命令不需要授权码
+        if not args.login_auth:
+            # 命令行未提供授权码，进行交互式询问
+            interactive_auth = get_login_auth_interactive()
+        else:
+            print(f"\n使用命令行参数提供的授权码（前20字符: {args.login_auth[:20]}...）")
     
     # 执行相应命令
     if args.command == "merge":
@@ -458,7 +570,8 @@ def main():
         return
     
     # 设置通用参数（其他命令需要）
-    login_auth = args.login_auth if args.login_auth else DEFAULT_LOGIN_AUTH
+    # 优先级：命令行参数 > 交互式输入 > 默认值（None）
+    login_auth = args.login_auth if args.login_auth else (interactive_auth if interactive_auth else DEFAULT_LOGIN_AUTH)
     save_path = args.save_path if args.save_path else DEFAULT_SAVE_PATH
     file_format = args.format
     save_images = not args.no_images
