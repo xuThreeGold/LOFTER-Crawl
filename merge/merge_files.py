@@ -142,11 +142,55 @@ def get_filename_without_ext(file_path: str) -> str:
     return os.path.splitext(os.path.basename(file_path))[0]
 
 
+def generate_toc(file_info_list: List[Tuple[str, datetime, str]], file_format: str, toc_links: bool = True) -> str:
+    """
+    生成目录
+    :param file_info_list: 文件信息列表，每个元素为(file_path, publish_time, filename)
+    :param file_format: 文件格式 'txt' 或 'md'
+    :param toc_links: 如果是MD格式，是否生成可跳转的链接（默认True）
+    :return: 目录字符串
+    """
+    toc_lines = []
+    
+    if file_format == 'txt':
+        toc_lines.append("目录\n")
+        toc_lines.append("=" * 50 + "\n\n")
+        for chapter_num, (_, _, filename) in enumerate(file_info_list, 1):
+            chapter_title = f"第{chapter_num}章-{filename}"
+            toc_lines.append(f"{chapter_num}. {chapter_title}\n")
+    else:  # md
+        toc_lines.append("# 目录\n\n")
+        for chapter_num, (_, _, filename) in enumerate(file_info_list, 1):
+            chapter_title = f"第{chapter_num}章-{filename}"
+            if toc_links:
+                # 生成Markdown链接（使用章节标题作为锚点）
+                # 大多数Markdown解析器（如GitHub Flavored Markdown）会自动为标题生成锚点
+                # 锚点格式：将标题转换为小写，空格和特殊字符替换为连字符
+                # 对于中文标题，大多数现代解析器（如GitHub、GitLab）会保留中文字符
+                # 使用标准格式以确保兼容性
+                import re
+                anchor = chapter_title.lower()
+                # 移除特殊字符（保留字母、数字、中文字符、空格、连字符）
+                anchor = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', anchor)
+                # 将空格和连字符统一为单个连字符
+                anchor = re.sub(r'[-\s]+', '-', anchor)
+                # 移除首尾连字符
+                anchor = anchor.strip('-')
+                toc_lines.append(f"{chapter_num}. [{chapter_title}](#{anchor})\n")
+            else:
+                toc_lines.append(f"{chapter_num}. {chapter_title}\n")
+        toc_lines.append("\n---\n\n")
+    
+    return ''.join(toc_lines)
+
+
 def merge_files(
     input_folder: str,
     output_folder: Optional[str] = None,
     output_filename: Optional[str] = None,
-    file_format: str = "txt"
+    file_format: str = "txt",
+    add_toc: bool = False,
+    toc_links: bool = True
 ):
     """
     合并文件夹中的所有文件
@@ -154,6 +198,8 @@ def merge_files(
     :param output_folder: 输出文件夹路径，如果为None则使用项目根目录下的result文件夹
     :param output_filename: 输出文件名（不含扩展名），如果为None则使用输入文件夹名
     :param file_format: 文件格式 'txt' 或 'md'（默认'txt'）
+    :param add_toc: 是否在开头添加目录（默认False）
+    :param toc_links: 如果是MD格式，是否生成可跳转的目录链接（默认True，仅在add_toc=True且file_format='md'时有效）
     """
     # 验证输入文件夹
     if not os.path.isdir(input_folder):
@@ -207,6 +253,11 @@ def merge_files(
     # 合并文件内容
     merged_content = []
     
+    # 如果启用目录，先添加目录
+    if add_toc:
+        toc_content = generate_toc(file_info_list, file_format, toc_links)
+        merged_content.append(toc_content)
+    
     for chapter_num, (file_path, publish_time, filename) in enumerate(file_info_list, 1):
         print(f"处理第 {chapter_num} 章: {filename}")
         content = get_file_content(file_path, file_format)
@@ -246,12 +297,21 @@ if __name__ == "__main__":
                        help='输出文件名（不含扩展名），如果未指定则使用输入文件夹名')
     parser.add_argument('-f', '--format', type=str, choices=['txt', 'md'], default='txt',
                        help='文件格式：txt或md（默认为txt）')
+    parser.add_argument('--add-toc', action='store_true',
+                       help='在开头添加目录')
+    parser.add_argument('--no-toc-links', action='store_true',
+                       help='如果合并MD文件且添加目录，不使用可跳转的链接（默认使用可跳转链接）')
     
     args = parser.parse_args()
+    
+    # 如果指定了--no-toc-links，则toc_links为False，否则为True（默认）
+    toc_links = not args.no_toc_links
     
     merge_files(
         input_folder=args.input_folder,
         output_folder=args.output,
         output_filename=args.name,
-        file_format=args.format
+        file_format=args.format,
+        add_toc=args.add_toc,
+        toc_links=toc_links
     )

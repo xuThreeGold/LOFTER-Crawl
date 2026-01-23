@@ -292,7 +292,9 @@ python run.py merge <输入文件夹> [选项]
 
 功能：合并指定文件夹中的所有lofter爬取文件，按发表时间排序，每个文件作为一章。
 
-**注意**：`merge` 命令不需要授权码，可以直接使用。
+**注意**：
+- `merge` 命令不需要授权码，可以直接使用
+- **只能合并本项目爬取的文件**：本工具依赖于文件开头的特定格式信息来提取发表时间和内容。TXT格式需要包含"发表时间："字段，MD格式需要包含YAML Front-Matter中的`date`字段。其他来源的文件可能无法正确解析
 
 示例：
 ```bash
@@ -307,6 +309,15 @@ python run.py merge "./articles" -o "./merged" -n "合并后的文件"
 
 # 合并MD文件并指定输出路径
 python run.py merge "./articles" -f md -o "./merged" -n "合并后的文件"
+
+# 合并MD文件并添加可跳转的目录（默认）
+python run.py merge "./articles" -f md --add-toc
+
+# 合并MD文件并添加普通目录（不可跳转）
+python run.py merge "./articles" -f md --add-toc --no-toc-links
+
+# 合并TXT文件并添加目录
+python run.py merge "./articles" -f txt --add-toc
 ```
 
 ### 6. Markdown格式转换
@@ -456,12 +467,20 @@ Tag+作者组合爬取命令支持所有Tag爬取的超参数（`--sort`、`--mi
 | `-o, --output` | 字符串 | `项目根目录/result` | 输出文件夹路径 |
 | `-n, --name` | 字符串 | 输入文件夹名 | 输出文件名（不含扩展名） |
 | `-f, --format` | 选择项 | `txt` | 文件格式：`txt` 或 `md` |
+| `--add-toc` | 标志 | `False` | 在开头添加目录 |
+| `--no-toc-links` | 标志 | `False` | 如果合并MD文件且添加目录，不使用可跳转的链接（默认使用可跳转链接，仅在`--add-toc`且格式为`md`时有效） |
 
 **注意事项**：
+- **只能合并本项目爬取的文件**：本工具依赖于文件开头的特定格式信息来提取发表时间和内容。TXT格式需要包含"发表时间："字段，MD格式需要包含YAML Front-Matter中的`date`字段。其他来源的文件可能无法正确解析
 - 输入文件夹中的文件必须统一格式（要么全是TXT，要么全是MD）
 - 如果无法从文件中提取发表时间，将使用文件的修改时间作为排序依据
 - 合并后的文件会保留原文件的内容，但会去除文件头（TXT格式）或YAML Front-Matter（MD格式）
 - 每个原文件在合并后的文件中作为一章，章节标题格式为"第XX章-文件名"
+- 目录功能说明：
+  - 使用`--add-toc`参数可以在合并后的文件开头添加目录
+  - 对于MD格式，默认生成可跳转到对应章节的目录链接（支持大多数Markdown解析器）
+  - 如果不想使用可跳转链接，可以使用`--no-toc-links`参数
+  - TXT格式的目录为纯文本格式，不支持跳转
 
 ### Markdown格式转换专用超参数
 
@@ -537,6 +556,13 @@ python run.py merge "./articles" -f txt
 # 合并MD文件并指定输出
 python run.py merge "./articles" \
     -f md \
+    -o "./merged" \
+    -n "合并后的文件"
+
+# 合并MD文件并添加可跳转的目录
+python run.py merge "./articles" \
+    -f md \
+    --add-toc \
     -o "./merged" \
     -n "合并后的文件"
 ```

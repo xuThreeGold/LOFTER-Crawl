@@ -163,6 +163,10 @@ def main():
                              help="输出文件名（不含扩展名），如果未指定则使用输入文件夹名")
     parser_merge.add_argument("-f", "--format", type=str, choices=["txt", "md"], default="txt",
                              help="文件格式：txt或md（默认为txt）")
+    parser_merge.add_argument("--add-toc", action="store_true",
+                             help="在开头添加目录")
+    parser_merge.add_argument("--no-toc-links", action="store_true",
+                             help="如果合并MD文件且添加目录，不使用可跳转的链接（默认使用可跳转链接）")
     
     # 命令6: Markdown格式转换
     parser_md2other = subparsers.add_parser("md2other", help="将Markdown文件转换为其他格式（PDF、EPUB、TXT、DOCX）")
@@ -189,11 +193,16 @@ def main():
             sys.path.insert(0, merge_path)
         from merge_files import merge_files
         
+        # 如果指定了--no-toc-links，则toc_links为False，否则为True（默认）
+        toc_links = not args.no_toc_links
+        
         merge_files(
             input_folder=args.input_folder,
             output_folder=args.output,
             output_filename=args.name,
-            file_format=args.format
+            file_format=args.format,
+            add_toc=args.add_toc,
+            toc_links=toc_links
         )
         return
     
