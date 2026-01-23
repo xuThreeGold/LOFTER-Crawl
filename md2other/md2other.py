@@ -1421,6 +1421,17 @@ def convert_md_to_docx(md_file: str, output_file: str) -> bool:
 
 
 def main():
+    # 获取脚本所在目录，然后找到 LOFTER-Crawl 目录
+    script_dir = Path(__file__).parent.absolute()
+    # 如果脚本在 md2other 子目录中，则上一级是 LOFTER-Crawl
+    if script_dir.name == 'md2other':
+        lofter_crawl_dir = script_dir.parent
+    else:
+        # 如果不在子目录中，使用当前目录
+        lofter_crawl_dir = script_dir
+    # 默认输出目录为 LOFTER-Crawl/result
+    default_output_dir = lofter_crawl_dir / 'result'
+    
     parser = argparse.ArgumentParser(
         description='Markdown 文件格式转换工具（纯 Python 实现）',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1440,10 +1451,10 @@ def main():
                         required=True,
                         help='输出格式: pdf, epub, txt, docx')
     parser.add_argument('--output', '-o',
-                        help='输出文件路径（可选，默认在 result 目录下）')
+                        help='输出文件路径（可选，默认在 LOFTER-Crawl/result 目录下）')
     parser.add_argument('--output-dir', '-d',
-                        default='result',
-                        help='输出目录（默认: result）')
+                        default=str(default_output_dir),
+                        help=f'输出目录（默认: {default_output_dir}）')
     
     args = parser.parse_args()
     
@@ -1462,7 +1473,7 @@ def main():
         output_path = Path(args.output)
         output_dir = output_path.parent
     else:
-        # 默认输出到 result 目录
+        # 默认输出到 LOFTER-Crawl/result 目录
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         
