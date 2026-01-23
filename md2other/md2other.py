@@ -55,16 +55,25 @@ def read_markdown(md_file: str) -> str:
 def generate_anchor_id(text: str) -> str:
     """
     生成锚点 ID，与 Markdown 的标题 ID 生成规则兼容
-    参考：Markdown 会将标题转换为小写，移除特殊字符，用连字符连接
+    参考：Markdown 的 toc 扩展会将标题转换为小写（英文），移除特殊字符，用连字符连接
+    特别注意：需要与 Markdown 的 toc 扩展生成的 ID 保持一致
+    Python-Markdown 的 toc 扩展使用 slugify 函数生成 ID
     """
-    # 转换为小写
-    anchor_id = text.lower()
-    # 移除特殊字符，保留中文字符、字母、数字、连字符和空格
-    anchor_id = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', anchor_id)
-    # 将空格和多个连字符替换为单个连字符
-    anchor_id = re.sub(r'[-\s]+', '-', anchor_id)
+    # Python-Markdown 的 toc 扩展通常：
+    # 1. 将英文转换为小写
+    # 2. 移除特殊字符（保留中文字符、字母、数字、连字符、空格）
+    # 3. 将空格和多个连字符替换为单个连字符
+    # 4. 移除首尾的连字符和空格
+    
+    # 先移除特殊字符，保留中文字符、字母、数字、连字符和空格
+    anchor_id = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', text)
+    # 将多个空格和连字符替换为单个连字符
+    anchor_id = re.sub(r'[\s-]+', '-', anchor_id)
     # 移除首尾的连字符
     anchor_id = anchor_id.strip('-')
+    
+    # 注意：Markdown 的 toc 扩展通常不将中文字符转换为小写
+    # 但会将英文转换为小写，这里我们保持原样以匹配实际行为
     return anchor_id
 
 
@@ -73,12 +82,19 @@ def markdown_to_html(md_text: str) -> str:
     extensions = [
         'extra',           # 表格、缩写等
         'tables',          # 表格支持
-        'toc',             # 目录生成
+        'toc',             # 目录生成（会自动为标题添加 id）
         'fenced_code',     # 代码块
         'codehilite',      # 代码高亮
         'nl2br',           # 换行转 <br>
     ]
-    return markdown.markdown(md_text, extensions=extensions)
+    # 配置 toc 扩展，确保生成锚点 ID
+    extension_configs = {
+        'toc': {
+            'permalink': False,  # 不添加永久链接
+            'baselevel': 1,      # 基础级别
+        }
+    }
+    return markdown.markdown(md_text, extensions=extensions, extension_configs=extension_configs)
 
 
 def html_to_plain_text(html: str) -> str:
@@ -533,8 +549,13 @@ def extract_headings_from_html(html: str) -> List[Tuple[str, str, int]]:
         for heading in soup.find_all(f'h{i}'):
             text = heading.get_text().strip()
             
-            # 生成锚点ID（与 Markdown 的标题ID生成规则兼容）
-            heading_id = generate_anchor_id(text)
+            # 检查标题是否已经有 id 属性（可能是 Markdown toc 扩展添加的）
+            existing_id = heading.get('id', '')
+            if existing_id:
+                heading_id = existing_id
+            else:
+                # 生成锚点ID（与 Markdown 的标题ID生成规则兼容）
+                heading_id = generate_anchor_id(text)
             
             # 如果ID为空或已使用，添加数字后缀
             if not heading_id or heading_id in used_ids:
@@ -729,20 +750,32 @@ def convert_md_to_epub(md_file: str, output_file: str) -> bool:
         
         # 确保所有链接都是可点击的（兼容多种阅读器）
         # 特别注意：保持网页链接和目录跳转链接
-        # 首先，确保所有标题都有正确的 id 属性
+        # 创建标题 ID 映射表（支持多种匹配方式）
         heading_id_map = {}  # 标题文本 -> id
+        heading_id_by_generated = {}  # 生成的ID -> 实际ID
+        all_heading_ids = set()  # 所有标题 ID 集合
+        
         for heading_text, heading_id, level in headings:
             heading_id_map[heading_text] = heading_id
+            all_heading_ids.add(heading_id)
+            generated_id = generate_anchor_id(heading_text)
+            heading_id_by_generated[generated_id] = heading_id
+            # 也存储原始文本的映射
+            heading_id_by_generated[heading_text] = heading_id
+            # 存储原始 ID 的映射（用于直接匹配）
+            heading_id_by_generated[heading_id] = heading_id
         
         # 处理所有链接，确保锚点链接指向正确的标题 ID
         for link in soup.find_all('a'):
             href = link.get('href', '')
             if href:
-                # 如果是外部链接（http/https），保持原样
+                # 如果是外部链接（http/https），确保格式正确
                 if href.startswith(('http://', 'https://')):
                     # 确保 href 属性存在且正确
                     link['href'] = href
-                    # 移除所有可能不兼容的属性（让阅读器使用默认行为）
+                    # 对于 EPUB，外部链接需要特殊处理
+                    # 某些阅读器可能不支持外部链接，但保持格式正确
+                    # 移除可能不兼容的属性，但保留 href
                     for attr in ['target', 'rel', 'class', 'style']:
                         if link.get(attr):
                             del link[attr]
@@ -750,21 +783,46 @@ def convert_md_to_epub(md_file: str, output_file: str) -> bool:
                 elif href.startswith('#'):
                     # 确保格式正确
                     anchor_id = href[1:]  # 去掉#
-                    # 如果锚点 ID 不存在，尝试从链接文本生成
-                    if anchor_id and anchor_id not in [h[1] for h in headings]:
+                    original_anchor_id = anchor_id
+                    
+                    # 如果锚点 ID 不存在于标题 ID 中，尝试匹配
+                    if anchor_id and anchor_id not in all_heading_ids:
                         # 尝试从链接文本生成 ID
                         link_text = link.get_text().strip()
                         generated_id = generate_anchor_id(link_text)
+                        
                         # 查找匹配的标题 ID
-                        for heading_text, heading_id, level in headings:
-                            if generate_anchor_id(heading_text) == generated_id or heading_text == link_text:
-                                anchor_id = heading_id
-                                break
+                        matched_id = None
+                        # 1. 直接匹配原始锚点 ID（可能是 Markdown toc 生成的，但格式略有不同）
+                        if original_anchor_id in heading_id_by_generated:
+                            matched_id = heading_id_by_generated[original_anchor_id]
+                        # 2. 匹配生成的 ID
+                        elif generated_id in heading_id_by_generated:
+                            matched_id = heading_id_by_generated[generated_id]
+                        # 3. 匹配链接文本
+                        elif link_text in heading_id_by_generated:
+                            matched_id = heading_id_by_generated[link_text]
+                        # 4. 遍历所有标题查找最接近的匹配（模糊匹配）
+                        else:
+                            for heading_text, heading_id, level in headings:
+                                # 尝试多种匹配方式
+                                if (generate_anchor_id(heading_text) == generated_id or 
+                                    heading_text == link_text or
+                                    heading_text.startswith(link_text) or
+                                    link_text in heading_text):
+                                    matched_id = heading_id
+                                    break
+                        
+                        if matched_id:
+                            anchor_id = matched_id
                     
+                    # 确保链接格式正确（EPUB 中内部链接使用 #id 格式）
                     if anchor_id:
                         link['href'] = f'#{anchor_id}'
                     else:
-                        link['href'] = '#'
+                        # 如果找不到匹配，保留原始链接（可能阅读器能处理）
+                        link['href'] = f'#{original_anchor_id}'
+                    
                     # 移除所有可能不兼容的属性
                     for attr in ['target', 'rel', 'class', 'style']:
                         if link.get(attr):
@@ -782,7 +840,11 @@ def convert_md_to_epub(md_file: str, output_file: str) -> bool:
             file_name='chapter1.xhtml',
             lang='zh-CN'
         )
-        chapter.content = str(soup)
+        
+        # 确保 HTML 内容格式正确，特别是链接
+        html_content = str(soup)
+        # 确保所有链接都是有效的 XHTML 格式
+        chapter.content = html_content
         book.add_item(chapter)
         
         # 生成目录结构（兼容多种阅读器）
@@ -886,12 +948,17 @@ def convert_md_to_epub(md_file: str, output_file: str) -> bool:
         a {
             color: #0066cc;
             text-decoration: underline;
+            cursor: pointer;
         }
         a:visited {
             color: #551a8b;
         }
         a:hover {
             color: #0052a3;
+        }
+        a[href^="http://"], a[href^="https://"] {
+            color: #0066cc;
+            text-decoration: underline;
         }
         '''
         
