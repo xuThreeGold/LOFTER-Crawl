@@ -1,6 +1,7 @@
 # Markdown 格式转换工具
 
 将 Markdown 文件转换为其他格式的工具，支持 PDF、EPUB、TXT、DOCX 等格式。
+整了半天，格式调正还是很失败，直接用现有Pandoc工具吧。
 
 ## 功能特性
 
