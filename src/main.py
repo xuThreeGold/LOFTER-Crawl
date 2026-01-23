@@ -223,53 +223,80 @@ def crawl_tag_then_author(tag_name, target_tag, sort_type="new", save_path=None,
                            save_images=True, min_hot=0):
     """
     功能5: 爬取tag下的文件，然后进入这些文件的作者主页，爬取该作者的指定tag的所有文件
-    :param tag_name: 初始tag名称
-    :param target_tag: 目标tag（作者主页中要爬取的tag）
-    :param sort_type: 排序类型
-    :param save_path: 保存路径
-    :param file_format: 文件格式
-    :param group_by_author: 是否按作者分组
-    :param login_auth: 登录授权码
-    :param save_images: 是否保存图片
-    :param min_hot: 最低热度限制
+    新实现逻辑（适配当前crawl_tag_posts与crawl_author实现）：
+    1. 使用 crawl_tag_posts(tag_name, ...) 获取文章 URL 列表
+    2. 对每个 URL 调用 parse_post，解析出作者名与作者 IP
+    3. 去重得到作者列表
+    4. 对每位作者调用 crawl_author(author_url, [target_tag], ...) 进行作者级爬取，
+       作者级爬取内部会逐篇调用 save_single_post 保存（符合你的要求）
     """
     if save_path is None:
         save_path = DEFAULT_SAVE_PATH
     
     print(f"步骤1: 正在爬取tag '{tag_name}' 下的文章...")
-    posts = crawl_tag_posts(tag_name, sort_type, login_auth, min_hot=min_hot)
+    post_urls = crawl_tag_posts(tag_name, sort_type, login_auth, min_hot=min_hot)
     
-    if not posts:
+    if not post_urls:
         print("未获取到任何文章")
         return
     
-    # 提取所有作者
-    authors = {}
-    for post in posts:
-        author_name = post.get("author_name", "")
-        author_ip = post.get("author_ip", "")
-        if author_name and author_ip:
+    # 步骤2: 解析每篇文章，收集作者信息（作者名 + author_ip）
+    print(f"步骤2: 从 {len(post_urls)} 篇文章中提取作者信息...")
+    authors = {}  # {author_url: {"name": author_name, "ip": author_ip}}
+    
+    for i, url in enumerate(post_urls, 1):
+        try:
+            print(f"[解析作者 {i}/{len(post_urls)}] {url}")
+            post_info = parse_post(url, login_auth)
+            if not post_info:
+                print("  解析失败，跳过")
+                continue
+            
+            author_name = post_info.get("author_name", "").strip()
+            author_ip = post_info.get("author_ip", "").strip()
+            if not author_ip:
+                print("  未获取到作者IP，跳过")
+                continue
+            
             author_url = f"https://{author_ip}.lofter.com/"
             if author_url not in authors:
                 authors[author_url] = {
-                    "name": author_name,
-                    "ip": author_ip
+                    "name": author_name or author_ip,
+                    "ip": author_ip,
                 }
+        except Exception as e:
+            print(f"  提取作者信息失败，跳过: {e}")
+            import traceback
+            traceback.print_exc()
+            continue
     
-    print(f"\n步骤2: 找到 {len(authors)} 位作者，开始爬取每位作者的tag '{target_tag}' 下的文章...")
-    
-    all_posts = []
-    for author_url, author_info in authors.items():
-        print(f"\n正在爬取作者 {author_info['name']} 的tag '{target_tag}' 文章...")
-        author_posts = crawl_author_posts(author_url, [target_tag], "in", login_auth)
-        all_posts.extend(author_posts)
-    
-    if not all_posts:
-        print("未获取到任何文章")
+    if not authors:
+        print("未从tag文章中解析到任何作者信息")
         return
     
-    print(f"\n总共获取到 {len(all_posts)} 篇文章，开始保存...")
-    save_posts(all_posts, save_path, file_format, group_by_author, save_images)
+    print(f"\n步骤3: 找到 {len(authors)} 位作者，开始爬取每位作者主页下、包含 tag '{target_tag}' 的文章...")
+    
+    # 步骤3: 对每个作者调用 crawl_author，由 crawl_author 内部负责按 tag 过滤并逐篇调用 save_single_post 保存
+    for idx, (author_url, author_info) in enumerate(authors.items(), 1):
+        print(f"\n[{idx}/{len(authors)}] 正在爬取作者 {author_info['name']} ({author_url}) 的 tag '{target_tag}' 文章...")
+        try:
+            # crawl_author 会：
+            # 1. 获取作者所有文章链接（或按 tag 过滤）
+            # 2. 对符合 tag 的文章逐篇调用 save_single_post 保存
+            crawl_author(
+                author_url=author_url,
+                target_tags=[target_tag],
+                save_path=save_path,
+                file_format=file_format,
+                group_by_author=group_by_author,
+                login_auth=login_auth,
+                save_images=save_images,
+            )
+        except Exception as e:
+            print(f"爬取作者 {author_info['name']} 失败: {e}")
+            import traceback
+            traceback.print_exc()
+            continue
 
 
 def add_common_args(parser):
