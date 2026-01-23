@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 合并lofter爬取的文件
-支持合并txt或md格式的文件，按发表时间排序
+支持合并txt或md格式的文件，按发表时间排序或按章节号智能排序
 """
 import os
 import re
 import yaml
 from datetime import datetime
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 
 
 def extract_publish_time_txt(file_path: str) -> Optional[str]:
@@ -142,6 +142,403 @@ def get_filename_without_ext(file_path: str) -> str:
     return os.path.splitext(os.path.basename(file_path))[0]
 
 
+def chinese_number_to_int(chinese_num: str) -> Optional[int]:
+    """
+    将中文数字转换为整数
+    支持：一、二、三...十、十一、十二...百、千、万、十万等
+    :param chinese_num: 中文数字字符串
+    :return: 对应的整数，如果无法转换返回None
+    """
+    if not chinese_num:
+        return None
+    
+    # 中文数字映射
+    digit_map = {
+        '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+        '六': 6, '七': 7, '八': 8, '九': 9
+    }
+    
+    # 处理特殊情况：单独的"十"表示10
+    if chinese_num == '十':
+        return 10
+    
+    try:
+        result = 0
+        temp = 0
+        i = 0
+        length = len(chinese_num)
+        
+        while i < length:
+            char = chinese_num[i]
+            
+            if char in digit_map:
+                temp = digit_map[char]
+            elif char == '十':
+                # "十"的处理：十一=11, 十二=12, 十=10
+                if temp == 0:
+                    # 单独的"十"或"十X"格式
+                    if i + 1 < length and chinese_num[i+1] in digit_map:
+                        # "十X"格式，如"十一"、"十二"
+                        temp = 10 + digit_map[chinese_num[i+1]]
+                        i += 1  # 跳过下一个字符
+                    else:
+                        temp = 10
+                else:
+                    # "X十"格式，如"二十"、"三十"
+                    temp = temp * 10
+            elif char == '百':
+                if temp == 0:
+                    temp = 100
+                else:
+                    temp = temp * 100
+            elif char == '千':
+                if temp == 0:
+                    temp = 1000
+                else:
+                    temp = temp * 1000
+            elif char == '万':
+                if temp == 0:
+                    temp = 10000
+                else:
+                    temp = temp * 10000
+                result = result + temp
+                temp = 0
+            else:
+                # 无法识别的字符
+                break
+            
+            i += 1
+        
+        result = result + temp
+        return result if result > 0 else None
+    except:
+        return None
+
+
+def extract_chapter_info(filename: str) -> Optional[Dict]:
+    """
+    从文件名中提取章节信息
+    支持多种章节命名规则：
+    1. 数字：2, 3完结, （1）, （4）, （完结）, 5完, 5完结, （完结 5）, （5 完结）
+    2. 上下中：（上）, （中）, （下）, （上下）, （中下）, （下上）, （下下下 完）
+    3. 番外/论坛体/其他题材：（番外1）, （论坛体1）, （捡手机文学1）, （福利番外1）等
+    4. 中文数字：（一）, （二）, （三）...（十一）, （十二 完）
+    5. 特殊分隔符：空格、-、之等，如"标题 12"、"标题-12"、"标题之12"
+    6. 特殊：无章节号（第一章）
+    :param filename: 文件名（不含扩展名）
+    :return: 包含章节信息的字典，格式：{'type': str, 'number': int/float, 'subtype': str, 'raw': str, 'theme': str}
+             如果无法识别，返回None
+    """
+    if not filename:
+        return None
+    
+    # 移除作者名部分（最后一个-后面的内容，但保留文件名中的-）
+    parts = filename.rsplit('-', 1)
+    if len(parts) == 2 and len(parts[1]) < 30:  # 作者名通常较短
+        name_part = parts[0]
+    else:
+        name_part = filename
+    
+    # 模式1: 完结标记（优先匹配，因为可能包含数字）
+    # 匹配：（完结）, （完结 5）, （5 完结）, （完结5）, （5完结）
+    end_patterns = [
+        (r'[（(]完结\s*(\d+)[）)]', 'end_with_num'),  # （完结 5）或（完结5）
+        (r'[（(](\d+)\s*完结[）)]', 'end_with_num'),  # （5 完结）或（5完结）
+        (r'[（(]完结[）)]', 'end'),  # （完结）
+    ]
+    
+    for pattern, match_type in end_patterns:
+        match = re.search(pattern, name_part)
+        if match:
+            if match_type == 'end_with_num':
+                num = int(match.group(1))
+                return {'type': 'chapter', 'number': num, 'subtype': 'end', 'raw': match.group(0), 'theme': 'normal'}
+            elif match_type == 'end':
+                return {'type': 'chapter', 'number': 999999, 'subtype': 'end', 'raw': match.group(0), 'theme': 'normal'}
+    
+    # 模式2: 纯数字（在文件名末尾或括号中，或通过分隔符连接）
+    patterns = [
+        (r'[（(](\d+)(完|完结)[）)]', 'number'),
+        (r'[（(](\d+)[）)]', 'number'),
+        (r'[\s\-之]+(\d+)(完|完结)?$', 'number'),
+        (r'(\d+)(完|完结)$', 'number'),
+        (r'(\d+)$', 'number'),
+    ]
+    
+    for pattern, match_type in patterns:
+        match = re.search(pattern, name_part)
+        if match:
+            if match_type == 'number':
+                num = int(match.group(1))
+                return {'type': 'chapter', 'number': num, 'subtype': 'normal', 'raw': match.group(0), 'theme': 'normal'}
+    
+    # 模式3: 中文数字（一、二、三...）
+    chinese_pattern = r'[（(]([一二三四五六七八九十百千万]+)[）)]'
+    match = re.search(chinese_pattern, name_part)
+    if match:
+        chinese_num = match.group(1)
+        chinese_num = re.sub(r'[完结\s]+$', '', chinese_num)
+        num = chinese_number_to_int(chinese_num)
+        if num is not None:
+            return {'type': 'chapter', 'number': num, 'subtype': 'chinese', 'raw': match.group(0), 'theme': 'normal'}
+    
+    # 模式4: 上下中系列
+    direction_pattern = r'[（(]([上下中]+)[）)]'
+    match = re.search(direction_pattern, name_part)
+    if match:
+        direction = match.group(1)
+        base_num = 0
+        detail = 0
+        
+        if direction == '上':
+            base_num = 1
+        elif direction == '中':
+            base_num = 2
+        elif direction == '下':
+            base_num = 3
+        elif direction == '上下':
+            base_num = 1
+            detail = 0.5
+        elif direction == '中下':
+            base_num = 2
+            detail = 0.5
+        elif direction == '下上':
+            base_num = 3
+            detail = 0.1
+        elif direction == '下中':
+            base_num = 3
+            detail = 0.2
+        elif '下' in direction:
+            base_num = 3
+            down_count = direction.count('下')
+            detail = (down_count - 1) * 0.1
+        elif '中' in direction:
+            base_num = 2
+        elif '上' in direction:
+            base_num = 1
+        
+        num = base_num + detail
+        return {'type': 'chapter', 'number': num, 'subtype': 'direction', 'raw': match.group(0), 'theme': 'normal'}
+    
+    # 模式5: 题材系列（番外、论坛体、捡手机文学、福利番外、日记系列等）
+    theme_keywords_in_brackets = ['番外', '论坛体', '捡手机', '福利', '日记', '小剧场', '彩蛋', '文学', '系列']
+    theme_pattern = r'[（(]([^）)]+?)(\d+)[）)]'
+    match = re.search(theme_pattern, name_part)
+    if match:
+        theme_name = match.group(1).strip()
+        num = int(match.group(2))
+        is_theme = any(keyword in theme_name for keyword in theme_keywords_in_brackets) or \
+                   (len(theme_name) > 1 and not re.match(r'^[上下中\d一二三四五六七八九十百千万]+$', theme_name))
+        
+        if is_theme:
+            if '完结' in theme_name:
+                num_match = re.search(r'(\d+)', theme_name)
+                if num_match:
+                    num = int(num_match.group(1))
+                clean_theme = theme_name.replace('完结', '').strip()
+                return {'type': 'theme', 'number': num, 'subtype': 'theme_end', 'raw': match.group(0), 'theme': clean_theme or 'normal'}
+            else:
+                return {'type': 'theme', 'number': num, 'subtype': 'theme', 'raw': match.group(0), 'theme': theme_name}
+    
+    theme_end_pattern = r'[（(]([^）)]+?)完结[）)]'
+    match = re.search(theme_end_pattern, name_part)
+    if match:
+        theme_name = match.group(1).strip()
+        is_theme = any(keyword in theme_name for keyword in theme_keywords_in_brackets) or \
+                   (len(theme_name) > 1 and not re.match(r'^[上下中\d一二三四五六七八九十百千万]+$', theme_name))
+        if is_theme:
+            return {'type': 'theme', 'number': 999999, 'subtype': 'theme_end', 'raw': match.group(0), 'theme': theme_name}
+    
+    # 模式6: 特殊标题（如"绿茶番外：鳏夫日记"、"番外：鳏夫日记"等）
+    # 支持"番外"关键词在中间或前面的情况
+    theme_keywords = ['番外', '论坛体', '捡手机', '福利', '日记', '小剧场', '彩蛋']
+    for keyword in theme_keywords:
+        if keyword in name_part:
+            # 提取题材名称（可能是"番外"或"绿茶番外"等）
+            # 尝试提取更完整的题材名称，如"绿茶番外"
+            theme_name = keyword
+            # 匹配"X番外："或"番外："格式，提取X部分
+            theme_match = re.search(r'([^：:]*?' + re.escape(keyword) + r'[^：:]*)', name_part)
+            if theme_match:
+                theme_name = theme_match.group(1).strip()
+            
+            # 检查是否有数字后缀（如"绿茶番外：鳏夫日记2"）
+            theme_num_match = re.search(r'(\d+)(完|完结)?$', name_part)
+            if theme_num_match:
+                num = int(theme_num_match.group(1))
+                return {'type': 'theme', 'number': num, 'subtype': 'special', 'raw': name_part, 'theme': theme_name}
+            else:
+                # 检查是否有完结标记
+                if '完结' in name_part or '完' in name_part:
+                    return {'type': 'theme', 'number': 999999, 'subtype': 'special', 'raw': name_part, 'theme': theme_name}
+                else:
+                    return {'type': 'theme', 'number': 0, 'subtype': 'special', 'raw': name_part, 'theme': theme_name}
+    
+    # 模式7: 无章节号（可能是第一章）
+    theme_keywords_all = ['番外', '论坛体', '捡手机', '福利', '日记', '小剧场', '彩蛋', '完结']
+    has_theme_keyword = any(keyword in name_part for keyword in theme_keywords_all)
+    
+    if not re.search(r'[（(][上下中\d一二三四五六七八九十百千万]+[）)]', name_part) and \
+       not re.search(r'[\s\-之]+\d+(完|完结)?$', name_part) and \
+       not re.search(r'\d+(完|完结)?$', name_part) and \
+       not has_theme_keyword:
+        return {'type': 'chapter', 'number': 1, 'subtype': 'first', 'raw': '', 'theme': 'normal'}
+    
+    return None
+
+
+def sort_files_by_chapter(file_info_list: List[Tuple[str, datetime, str]]) -> List[Tuple[str, datetime, str]]:
+    """
+    按章节号智能排序文件列表
+    支持按题材分组，题材内按章节排序，题材间按第一篇文的发表时间排序
+    :param file_info_list: 文件信息列表
+    :return: 排序后的文件信息列表
+    """
+    # 提取每个文件的章节信息
+    files_with_info = []
+    for file_info in file_info_list:
+        chapter_info = extract_chapter_info(file_info[2])
+        files_with_info.append((file_info, chapter_info))
+    
+    # 按题材分组
+    # 区分正文（normal）和番外类题材，确保番外和正文分开
+    # 保留原始题材名称用于区分不同番外系列，但在排序时统一处理
+    theme_groups = {}
+    for file_info, chapter_info in files_with_info:
+        if chapter_info:
+            theme = chapter_info.get('theme', 'normal')
+            # 保留原始题材名称，用于区分不同番外系列
+        else:
+            theme = 'unknown'
+        
+        if theme not in theme_groups:
+            theme_groups[theme] = []
+        theme_groups[theme].append((file_info, chapter_info))
+    
+    # 对每个题材内的文件进行排序
+    sorted_groups = []
+    for theme, files in theme_groups.items():
+        if theme == 'normal':
+            sorted_files = sorted(files, key=lambda x: (
+                x[1]['number'] if x[1] else 0,
+                x[0][1]
+            ))
+        elif theme == 'unknown':
+            sorted_files = sorted(files, key=lambda x: x[0][1])
+        else:
+            # 番外类题材，按章节号排序
+            sorted_files = sorted(files, key=lambda x: (
+                x[1]['number'] if x[1] else 0,
+                x[0][1]
+            ))
+        
+        first_time = sorted_files[0][0][1] if sorted_files else datetime.max
+        sorted_groups.append((theme, sorted_files, first_time))
+    
+    # 按题材排序：normal优先，所有番外类题材在后面
+    # 确保正文和番外完全分开，正文全部在前面，番外全部在后面
+    def get_theme_sort_key(group):
+        theme, files, first_time = group
+        if theme == 'normal':
+            # 正文题材，使用(0, ...)确保所有正文都在最前面
+            return (0, datetime.min, '')
+        elif theme == 'unknown':
+            return (999, datetime.max, '')
+        else:
+            # 判断是否为番外类题材
+            is_fanwai = '番外' in theme or any(kw in theme for kw in ['论坛体', '捡手机', '福利', '日记', '小剧场', '彩蛋'])
+            if is_fanwai:
+                # 所有番外类题材统一使用(1, ...)确保都在正文后面
+                # 番外类题材之间按第一篇文的时间排序，相同时间按题材名称排序
+                # 这样可以保持不同番外系列的相对顺序
+                return (1, first_time, theme)
+            else:
+                # 其他非番外类题材（如果有的话）
+                return (2, first_time, theme)
+    
+    sorted_groups.sort(key=get_theme_sort_key)
+    
+    # 合并所有题材的文件
+    # 先合并所有normal题材的文件，然后合并所有番外类题材的文件
+    # 确保正文和番外完全分开
+    result = []
+    normal_group = None
+    fanwai_groups = []
+    other_groups = []
+    
+    for theme, files, first_time in sorted_groups:
+        if theme == 'normal':
+            normal_group = (theme, files, first_time)
+        elif theme == 'unknown':
+            other_groups.append((theme, files, first_time))
+        else:
+            # 判断是否为番外类题材
+            is_fanwai = '番外' in theme or any(kw in theme for kw in ['论坛体', '捡手机', '福利', '日记', '小剧场', '彩蛋'])
+            if is_fanwai:
+                fanwai_groups.append((theme, files, first_time))
+            else:
+                other_groups.append((theme, files, first_time))
+    
+    # 先合并正文
+    if normal_group:
+        theme, files, first_time = normal_group
+        for file_info, chapter_info in files:
+            result.append(file_info)
+    
+    # 然后合并所有番外（按题材分组，每个番外系列内部按章节号排序）
+    for theme, files, first_time in fanwai_groups:
+        for file_info, chapter_info in files:
+            result.append(file_info)
+    
+    # 最后合并其他题材
+    for theme, files, first_time in other_groups:
+        for file_info, chapter_info in files:
+            result.append(file_info)
+    
+    return result
+
+
+def check_file_contains_keywords(file_path: str, keywords: List[str], match_mode: str = "or", file_format: str = "txt") -> bool:
+    """
+    检查文件是否包含指定的关键词
+    :param file_path: 文件路径
+    :param keywords: 关键词列表
+    :param match_mode: 匹配模式，"and"表示所有关键词都要包含，"or"表示包含任一关键词即可
+    :param file_format: 文件格式 'txt' 或 'md'
+    :return: 如果文件包含关键词则返回True，否则返回False
+    """
+    if not keywords:
+        return True  # 如果没有关键词，则所有文件都匹配
+    
+    try:
+        # 获取文件名（不含扩展名）
+        filename = get_filename_without_ext(file_path)
+        
+        # 移除作者名部分（最后一个-后面的内容）
+        parts = filename.rsplit('-', 1)
+        if len(parts) == 2 and len(parts[1]) < 30:  # 作者名通常较短
+            name_part = parts[0]
+        else:
+            name_part = filename
+        
+        # 在文件名中搜索关键词（只在文件名中搜索，不在文件内容中搜索）
+        found_keywords = []
+        for keyword in keywords:
+            if keyword in name_part:
+                found_keywords.append(keyword)
+        
+        # 根据匹配模式判断
+        if match_mode.lower() == "and":
+            # 所有关键词都要找到
+            return len(found_keywords) == len(keywords)
+        else:  # "or"
+            # 至少找到一个关键词
+            return len(found_keywords) > 0
+    except Exception as e:
+        print(f"检查文件 {file_path} 时出错: {e}")
+        return False
+
+
 def generate_toc(file_info_list: List[Tuple[str, datetime, str]], file_format: str, toc_links: bool = True) -> str:
     """
     生成目录
@@ -190,7 +587,10 @@ def merge_files(
     output_filename: Optional[str] = None,
     file_format: str = "txt",
     add_toc: bool = False,
-    toc_links: bool = True
+    toc_links: bool = True,
+    keywords: Optional[List[str]] = None,
+    match_mode: str = "or",
+    sort_mode: str = "time"
 ):
     """
     合并文件夹中的所有文件
@@ -200,6 +600,9 @@ def merge_files(
     :param file_format: 文件格式 'txt' 或 'md'（默认'txt'）
     :param add_toc: 是否在开头添加目录（默认False）
     :param toc_links: 如果是MD格式，是否生成可跳转的目录链接（默认True，仅在add_toc=True且file_format='md'时有效）
+    :param keywords: 关键词列表，如果提供则只合并包含这些关键词的文件（在文件名或内容中搜索）
+    :param match_mode: 匹配模式，"and"表示所有关键词都要包含，"or"表示包含任一关键词即可（默认"or"）
+    :param sort_mode: 排序模式，"time"表示按发表时间排序，"chapter"表示按章节号智能排序（默认"time"）
     """
     # 验证输入文件夹
     if not os.path.isdir(input_folder):
@@ -237,18 +640,54 @@ def merge_files(
     
     print(f"找到 {len(all_files)} 个 {file_format.upper()} 文件")
     
-    # 提取每个文件的发表时间并排序
+    # 如果指定了关键词，进行过滤
+    if keywords:
+        print(f"关键词过滤: {keywords}, 匹配模式: {match_mode}")
+        filtered_files = []
+        for file_path in all_files:
+            if check_file_contains_keywords(file_path, keywords, match_mode, file_format):
+                filtered_files.append(file_path)
+        
+        print(f"过滤后剩余 {len(filtered_files)} 个文件")
+        if not filtered_files:
+            print("没有文件包含指定的关键词，合并终止")
+            return
+        
+        all_files = filtered_files
+    
+    # 提取每个文件的发表时间
     file_info_list: List[Tuple[str, datetime, str]] = []
     for file_path in all_files:
         publish_time = get_file_publish_time(file_path, file_format)
         filename = get_filename_without_ext(file_path)
         file_info_list.append((file_path, publish_time, filename))
     
-    # 按发表时间排序
-    file_info_list.sort(key=lambda x: x[1])
-    
-    print(f"按发表时间排序完成，最早: {file_info_list[0][1].strftime('%Y-%m-%d')}, "
-          f"最晚: {file_info_list[-1][1].strftime('%Y-%m-%d')}")
+    # 根据排序模式进行排序
+    if sort_mode == "chapter":
+        # 按章节号智能排序（支持按题材分组）
+        file_info_list = sort_files_by_chapter(file_info_list)
+        print(f"按章节号智能排序完成")
+        # 统计能识别章节的文件数量和题材分布
+        recognized = 0
+        theme_count = {}
+        for info in file_info_list:
+            chapter_info = extract_chapter_info(info[2])
+            if chapter_info:
+                recognized += 1
+                theme = chapter_info.get('theme', 'normal')
+                theme_count[theme] = theme_count.get(theme, 0) + 1
+        
+        print(f"识别到章节信息的文件: {recognized}/{len(file_info_list)}")
+        if theme_count:
+            themes_str = ', '.join([f"{k}: {v}" for k, v in theme_count.items()])
+            print(f"题材分布: {themes_str}")
+        if recognized < len(file_info_list):
+            print(f"注意: {len(file_info_list) - recognized} 个文件无法识别章节信息，已按时间排序放在最后")
+    else:
+        # 按发表时间排序（默认）
+        file_info_list.sort(key=lambda x: x[1])
+        print(f"按发表时间排序完成，最早: {file_info_list[0][1].strftime('%Y-%m-%d')}, "
+              f"最晚: {file_info_list[-1][1].strftime('%Y-%m-%d')}")
     
     # 合并文件内容
     merged_content = []
@@ -301,6 +740,12 @@ if __name__ == "__main__":
                        help='在开头添加目录')
     parser.add_argument('--no-toc-links', action='store_true',
                        help='如果合并MD文件且添加目录，不使用可跳转的链接（默认使用可跳转链接）')
+    parser.add_argument('-k', '--keywords', type=str, nargs='+', default=None,
+                       help='关键词列表，只合并包含这些关键词的文件（在文件名或内容中搜索）')
+    parser.add_argument('-m', '--match-mode', type=str, choices=['and', 'or'], default='or',
+                       help='匹配模式：and表示所有关键词都要包含，or表示包含任一关键词即可（默认or）')
+    parser.add_argument('-s', '--sort-mode', type=str, choices=['time', 'chapter'], default='time',
+                       help='排序模式：time表示按发表时间排序，chapter表示按章节号智能排序（默认time）')
     
     args = parser.parse_args()
     
@@ -313,5 +758,8 @@ if __name__ == "__main__":
         output_filename=args.name,
         file_format=args.format,
         add_toc=args.add_toc,
-        toc_links=toc_links
+        toc_links=toc_links,
+        keywords=args.keywords,
+        match_mode=args.match_mode,
+        sort_mode=args.sort_mode
     )

@@ -115,22 +115,57 @@ python md2other.py notes.md --format txt
 
 ### 问题：转换 PDF 时出错
 
+**错误信息**：`pdflatex not found` 或 `PDF 转换失败`
+
 **解决方案：**
-1. 确保已安装 Pandoc
-2. 如果使用 pdfkit，确保已安装 wkhtmltopdf
-3. 检查系统是否安装了中文字体
+1. **安装 LaTeX 发行版**（推荐）：
+   - Windows: 下载并安装 [MiKTeX](https://miktex.org/download) 或 [TeX Live](https://www.tug.org/texlive/)
+   - 安装后，确保 `xelatex` 或 `pdflatex` 在系统 PATH 中
+   - 验证安装：`xelatex --version` 或 `pdflatex --version`
+
+2. **使用其他PDF引擎**（备选）：
+   - 安装 wkhtmltopdf: https://wkhtmltopdf.org/downloads.html
+   - 或安装 WeasyPrint: `pip install weasyprint`
+
+3. **检查中文字体**：
+   - 确保系统安装了中文字体（如 Microsoft YaHei）
+   - 如果使用 xelatex，需要指定字体：`-V CJKmainfont=Microsoft YaHei`
+
+**注意**：程序会自动尝试多个PDF引擎（xelatex、pdflatex、wkhtmltopdf、weasyprint），如果都不可用会显示详细错误信息。
 
 ### 问题：转换 EPUB 时出错
 
 **解决方案：**
 1. 确保已安装 Pandoc
 2. 检查输入文件格式是否正确
+3. 验证 pandoc 安装：`pandoc --version`
 
 ### 问题：转换 DOCX 时出错
 
 **解决方案：**
 1. 确保已安装 Pandoc
 2. 检查输出目录是否有写入权限
+3. 验证 pandoc 安装：`pandoc --version`
+
+### 问题：目录链接不能跳转（DOCX/EPUB）
+
+**问题描述**：转换后的DOCX或EPUB文件中，目录链接无法跳转到对应章节。
+
+**原因**：
+- Markdown中的目录链接格式可能与Pandoc生成的标题ID不匹配
+- 中文标题的ID生成规则可能与链接中的ID不一致
+
+**解决方案**：
+1. **程序已自动修复**：代码会自动修复目录链接，确保链接与标题ID匹配
+2. **如果仍有问题**：
+   - 检查Markdown文件中的目录链接格式是否正确
+   - 确保标题格式为 `## 标题文本`
+   - 目录链接格式应为 `[文本](#标题id)`
+
+**注意**：
+- DOCX格式：Pandoc会生成Word的自动目录，同时保留Markdown中的目录
+- EPUB格式：Pandoc会生成EPUB的导航目录，同时保留Markdown中的目录链接
+- 如果目录链接仍然无法跳转，可能是阅读器的问题（某些阅读器可能不支持内部锚点链接）
 
 ## 许可证
 

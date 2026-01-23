@@ -1,17 +1,21 @@
-# Markdown format conversion tool dependencies
+# Markdown 格式转换工具依赖（纯 Python 实现）
 
-# Core conversion library (recommended: pypandoc, supports multiple formats)
-pypandoc>=1.11
-
-# PDF conversion alternative (optional)
-# pdfkit>=1.0.0
-# Note: pdfkit requires wkhtmltopdf: https://wkhtmltopdf.org/downloads.html
-
-# TXT conversion
+# Markdown 解析
 markdown>=3.4.0
-html2text>=2020.1.16
+beautifulsoup4>=4.9.0
 
-# Note: pypandoc requires system installation of pandoc
-# Windows: https://github.com/jgm/pandoc/releases
-# Linux: sudo apt-get install pandoc
-# macOS: brew install pandoc
+# PDF 生成（纯 Python，不依赖 LaTeX / wkhtmltopdf）
+fpdf2>=2.7.0
+
+# EPUB 生成
+ebooklib>=0.18
+
+# DOCX 生成
+python-docx>=0.8.11
+
+# 网络请求（用于下载图片）
+requests>=2.28.0
+
+# 图片处理（用于 PDF 图片尺寸计算）
+Pillow>=9.0.0
+
