@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-LOFTER爬虫主程序
+LOFTER爬虫核心功能模块
+包含爬虫相关的功能和命令行解析
 """
 import os
 import sys
-import time
 import json
+import time
 import argparse
-from pathlib import Path
 from .config import DEFAULT_LOGIN_AUTH, DEFAULT_SAVE_PATH
 from .post_parser import parse_post
 from .tag_crawler import crawl_tag_posts
@@ -47,7 +47,7 @@ def save_single_post(url, save_path=None, file_format="txt", login_auth=None, sa
 def crawl_tag(tag_name, sort_type="new", save_path=None, file_format="txt", 
                group_by_author=True, login_auth=None, save_images=True, min_hot=0):
     """
-    功能3: 爬取tag下的所有文章
+    功能2: 爬取tag下的所有文章
     新逻辑：
     1. 先获取所有文章链接
     2. 调用成熟的保存单篇文章的方法依次保存
@@ -139,7 +139,7 @@ def crawl_author(author_url, target_tags=None, save_path=None, file_format="txt"
                   group_by_author=False, login_auth=None, save_images=True,
                   start_time=None, end_time=None):
     """
-    功能4: 爬取作者的文章（参考lofterSpider-master_v2/src/author_spider.py第265-368行）
+    功能3: 爬取作者的文章（参考lofterSpider-master_v2/src/author_spider.py第265-368行）
     逻辑：
     1. 获得该作者所有文章链接
     2. 一篇一篇地保存，先确定是否符合tag要求，符合调用保存单篇文章的方法保存
@@ -224,7 +224,7 @@ def crawl_tag_then_author(tag_name, target_tag, sort_type="new", save_path=None,
                            file_format="txt", group_by_author=True, login_auth=None,
                            save_images=True, min_hot=0):
     """
-    功能5: 爬取tag下的文件，然后进入这些文件的作者主页，爬取该作者的指定tag的所有文件
+    功能4: 爬取tag下的文件，然后进入这些文件的作者主页，爬取该作者的指定tag的所有文件
     新实现逻辑（适配当前crawl_tag_posts与crawl_author实现）：
     1. 使用 crawl_tag_posts(tag_name, ...) 获取文章 URL 列表
     2. 对每个 URL 调用 parse_post，解析出作者名与作者 IP
@@ -314,6 +314,44 @@ def add_common_args(parser):
     parser.add_argument("--no-group", action="store_true",
                         help="不按作者分组（所有文件保存在一个文件夹）")
 
+
+def crawler_main(args, login_auth=None):
+    """
+    爬虫功能的主函数（只处理爬虫相关命令）
+    :param args: 命令行参数对象
+    :param login_auth: 登录授权码（如果为None，则使用args.login_auth或默认值）
+    """
+    # 设置通用参数
+    if login_auth is None:
+        login_auth = args.login_auth if args.login_auth else DEFAULT_LOGIN_AUTH
+    save_path = args.save_path if args.save_path else DEFAULT_SAVE_PATH
+    file_format = args.format
+    save_images = not args.no_images
+    group_by_author = not args.no_group
+    
+    # 确保保存路径存在
+    os.makedirs(save_path, exist_ok=True)
+    
+    # 执行相应命令
+    if args.command == "post":
+        save_single_post(args.url, save_path, file_format, login_auth, save_images)
+    
+    elif args.command == "tag":
+        crawl_tag(args.tag_name, args.sort, save_path, file_format,
+                 group_by_author, login_auth, save_images, args.min_hot)
+    
+    elif args.command == "author":
+        crawl_author(args.author_url, args.tags, save_path, file_format,
+                    group_by_author, login_auth, save_images,
+                    args.start_time, args.end_time)
+    
+    elif args.command == "tag-author":
+        crawl_tag_then_author(args.tag_name, args.target_tag, args.sort, save_path,
+                             file_format, group_by_author, login_auth,
+                             save_images, args.min_hot)
+
+
+# ========== 授权码管理功能 ==========
 
 def get_auth_config_path():
     """
@@ -415,8 +453,10 @@ def get_login_auth_interactive():
             return None
 
 
+# ========== 命令行解析主函数 ==========
+
 def main():
-    """主函数"""
+    """主函数 - 命令行入口"""
     parser = argparse.ArgumentParser(description="LOFTER爬虫工具")
     
     # 子命令
@@ -455,26 +495,6 @@ def main():
     parser_tag_author.add_argument("--min-hot", type=int, default=0, help="最低热度限制")
     add_common_args(parser_tag_author)
     
-    # 命令5: 合并文件
-    parser_merge = subparsers.add_parser("merge", help="合并文件夹中的所有lofter爬取文件")
-    parser_merge.add_argument("input_folder", type=str, help="输入文件夹路径（包含所有要合并的文件）")
-    parser_merge.add_argument("-o", "--output", type=str, default=None,
-                             help="输出文件夹路径（默认为项目根目录下的result文件夹）")
-    parser_merge.add_argument("-n", "--name", type=str, default=None,
-                             help="输出文件名（不含扩展名），如果未指定则使用输入文件夹名")
-    parser_merge.add_argument("-f", "--format", type=str, choices=["txt", "md"], default="txt",
-                             help="文件格式：txt或md（默认为txt）")
-    
-    # 命令6: Markdown格式转换
-    parser_md2other = subparsers.add_parser("md2other", help="将Markdown文件转换为其他格式（PDF、EPUB、TXT、DOCX）")
-    parser_md2other.add_argument("input_file", type=str, help="输入的Markdown文件路径")
-    parser_md2other.add_argument("-f", "--format", type=str, choices=["pdf", "epub", "txt", "docx"],
-                                required=True, help="输出格式: pdf, epub, txt, docx")
-    parser_md2other.add_argument("-o", "--output", type=str, default=None,
-                                help="输出文件路径（可选，默认在result目录下）")
-    parser_md2other.add_argument("-d", "--output-dir", type=str, default=None,
-                                help="输出目录（默认: result）")
-    
     args = parser.parse_args()
     
     if not args.command:
@@ -483,120 +503,17 @@ def main():
     
     # 对于需要登录的命令，交互式获取授权码（如果命令行参数未提供）
     interactive_auth = None
-    if args.command not in ["merge", "md2other"]:
-        # merge 和 md2other 命令不需要授权码
-        if not args.login_auth:
-            # 命令行未提供授权码，进行交互式询问
-            interactive_auth = get_login_auth_interactive()
-        else:
-            print(f"\n使用命令行参数提供的授权码（前20字符: {args.login_auth[:20]}...）")
+    if not args.login_auth:
+        # 命令行未提供授权码，进行交互式询问
+        interactive_auth = get_login_auth_interactive()
+    else:
+        print(f"\n使用命令行参数提供的授权码（前20字符: {args.login_auth[:20]}...）")
     
-    # 执行相应命令
-    if args.command == "merge":
-        # merge命令不需要通用参数设置
-        # 导入merge模块（使用绝对导入路径）
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        merge_path = os.path.join(project_root, "merge")
-        if merge_path not in sys.path:
-            sys.path.insert(0, merge_path)
-        from merge_files import merge_files
-        
-        merge_files(
-            input_folder=args.input_folder,
-            output_folder=args.output,
-            output_filename=args.name,
-            file_format=args.format
-        )
-        return
-    
-    if args.command == "md2other":
-        # md2other命令
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        md2other_path = os.path.join(project_root, "md2other")
-        if md2other_path not in sys.path:
-            sys.path.insert(0, md2other_path)
-        
-        # 导入md2other模块
-        from md2other import convert_md_to_pdf, convert_md_to_epub, convert_md_to_txt, convert_md_to_docx
-        from pathlib import Path
-        
-        # 检查输入文件是否存在
-        input_path = Path(args.input_file)
-        if not input_path.exists():
-            print(f"错误: 输入文件不存在: {args.input_file}")
-            sys.exit(1)
-        
-        if not input_path.is_file():
-            print(f"错误: 输入路径不是文件: {args.input_file}")
-            sys.exit(1)
-        
-        # 确定输出文件路径
-        if args.output:
-            output_path = Path(args.output)
-        else:
-            # 默认输出到 result 目录（相对于项目根目录）
-            if args.output_dir:
-                output_dir = Path(args.output_dir)
-            else:
-                output_dir = Path(project_root) / "result"
-            
-            output_dir.mkdir(parents=True, exist_ok=True)
-            output_path = output_dir / f"{input_path.stem}.{args.format}"
-        
-        # 确保输出目录存在
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        print(f"输入文件: {input_path}")
-        print(f"输出格式: {args.format}")
-        print(f"输出文件: {output_path}")
-        print("正在转换...")
-        
-        # 根据格式调用相应的转换函数
-        success = False
-        if args.format == 'pdf':
-            success = convert_md_to_pdf(str(input_path), str(output_path))
-        elif args.format == 'epub':
-            success = convert_md_to_epub(str(input_path), str(output_path))
-        elif args.format == 'txt':
-            success = convert_md_to_txt(str(input_path), str(output_path))
-        elif args.format == 'docx':
-            success = convert_md_to_docx(str(input_path), str(output_path))
-        
-        if success:
-            print(f"✓ 转换成功: {output_path}")
-        else:
-            print(f"✗ 转换失败")
-            sys.exit(1)
-        return
-    
-    # 设置通用参数（其他命令需要）
-    # 优先级：命令行参数 > 交互式输入 > 默认值（None）
+    # 优先级：命令行参数 > 交互式输入 > 默认值
     login_auth = args.login_auth if args.login_auth else (interactive_auth if interactive_auth else DEFAULT_LOGIN_AUTH)
-    save_path = args.save_path if args.save_path else DEFAULT_SAVE_PATH
-    file_format = args.format
-    save_images = not args.no_images
-    group_by_author = not args.no_group
     
-    # 确保保存路径存在
-    os.makedirs(save_path, exist_ok=True)
-    
-    # 执行相应命令
-    if args.command == "post":
-        save_single_post(args.url, save_path, file_format, login_auth, save_images)
-    
-    elif args.command == "tag":
-        crawl_tag(args.tag_name, args.sort, save_path, file_format,
-                 group_by_author, login_auth, save_images, args.min_hot)
-    
-    elif args.command == "author":
-        crawl_author(args.author_url, args.tags, save_path, file_format,
-                    group_by_author, login_auth, save_images,
-                    args.start_time, args.end_time)
-    
-    elif args.command == "tag-author":
-        crawl_tag_then_author(args.tag_name, args.target_tag, args.sort, save_path,
-                             file_format, group_by_author, login_auth,
-                             save_images, args.min_hot)
+    # 调用爬虫主函数
+    crawler_main(args, login_auth)
 
 
 if __name__ == "__main__":

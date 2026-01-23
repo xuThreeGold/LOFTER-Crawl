@@ -1,6 +1,38 @@
 # LOFTER爬虫工具
 
-基于lofterSpider-master项目改进的LOFTER内容爬取工具。
+基于 [lofterSpider](https://github.com/IshtarTang/lofterSpider) 项目改进的LOFTER内容爬取工具。
+
+## 项目介绍
+
+本项目是一个功能完整的LOFTER内容爬取和管理工具集，支持爬取、合并、格式转换等功能。
+
+### 项目设计
+
+项目采用模块化设计，主要分为以下几个部分：
+
+1. **核心爬虫模块** (`src/`): 包含所有爬虫相关的核心功能
+   - `post_parser.py`: 文章解析模块
+   - `tag_crawler.py`: Tag爬取模块
+   - `author_crawler.py`: 作者爬取模块
+   - `file_saver.py`: 文件保存模块
+   - `main.py`: 爬虫主程序（包含命令行解析和授权码管理）
+
+2. **文件处理模块**:
+   - `merge/`: 文件合并功能，支持按时间排序合并多个文件
+   - `md2other/`: Markdown格式转换功能，支持转换为PDF、EPUB、TXT、DOCX
+
+3. **统一入口** (`run.py`): 整合所有功能的命令行入口
+
+### 参考项目
+
+本项目基于 [lofterSpider](https://github.com/IshtarTang/lofterSpider) 项目改进，参考了其核心爬取逻辑和文件保存方式，并在此基础上进行了以下改进：
+
+- 统一了命令行接口，所有功能通过 `run.py` 调用
+- 添加了交互式授权码管理功能
+- 支持Markdown格式输出
+- 添加了文件合并功能
+- 添加了Markdown格式转换功能
+- 改进了代码结构，提高了可维护性
 
 ## 功能特性
 
@@ -104,7 +136,36 @@ python run.py --help
 
 ## 配置
 
-默认登录授权码已配置在`src/config.py`中，也可以通过命令行参数`--login-auth`传入新的值。
+### 获取登录授权码
+
+使用爬虫功能需要先获取登录授权码。获取方式如下：
+
+1. **登录LOFTER**：在浏览器中登录LOFTER网站
+2. **打开开发者工具**：在登录后的任意LOFTER网页上，按 `F12` 打开开发者工具
+3. **查看Cookies**：
+   - 点击 `Application` 标签（或 `应用程序` 标签）
+   - 在左侧找到 `Cookies`，点击展开
+   - 点击 `Cookies` 下的 `https://www.lofter.com`（或你访问的lofter域名）
+4. **查找授权码**：在右侧的Cookie列表中，找到 `LOFTER-PHONE-LOGIN-AUTH`（或其他登录方式对应的key），复制其 `Value` 值
+
+**操作示例**：
+
+![获取授权码示例](READMEimg/LOFTER-PHONE-LOGIN-AUTH.png)
+
+**注意**：
+- 如果使用其他登录方式（如QQ、微信、邮箱等），需要查找对应的Cookie key：
+  - 手机号登录：`LOFTER-PHONE-LOGIN-AUTH`
+  - Lofter ID登录：`Authorization`
+  - QQ/微信/微博登录：`LOFTER_SESS`
+  - 邮箱登录：`NTES_SESS`
+- 授权码会定期过期，过期后需要重新获取
+- 授权码是敏感信息，请妥善保管，不要泄露
+
+**授权码使用方式**：
+
+1. **交互式输入**（推荐）：运行爬虫命令时，如果没有通过命令行参数提供授权码，程序会自动提示输入
+2. **命令行参数**：通过 `--login-auth` 参数传入
+3. **配置文件**：修改 `src/config.py` 中的 `DEFAULT_LOGIN_AUTH`（不推荐，可能泄露）
 
 ## 使用说明
 
@@ -148,7 +209,7 @@ python run.py post https://xxx.lofter.com/post/xxx
 python run.py post https://xxx.lofter.com/post/xxx --format md
 
 # 指定保存路径
-python run.py post https://xxx.lofter.com/post/xxx --save-path "D:\小说\小说\耽美\题材_风起东宫or太卢"
+python run.py post https://xxx.lofter.com/post/xxx --save-path "./my_articles"
 
 # 不保存图片
 python run.py post https://xxx.lofter.com/post/xxx --no-images
@@ -170,19 +231,19 @@ python run.py tag <tag名称> [选项]
 示例：
 ```bash
 # 爬取最新文章
-python run.py tag "风起东宫" --sort new
+python run.py tag "示例tag" --sort new
 
 # 爬取最热文章（全部）
-python run.py tag "风起东宫" --sort total
+python run.py tag "示例tag" --sort total
 
 # 爬取月榜文章，按作者分组保存
-python run.py tag "风起东宫" --sort month --save-path "D:\小说\小说\耽美\题材_风起东宫or太卢"
+python run.py tag "示例tag" --sort month --save-path "./articles"
 
 # 爬取并保存为Markdown格式，不按作者分组
-python run.py tag "风起东宫" --format md --no-group
+python run.py tag "示例tag" --format md --no-group
 
 # 设置最低热度限制
-python run.py tag "风起东宫" --sort total --min-hot 100
+python run.py tag "示例tag" --sort total --min-hot 100
 ```
 
 ### 3. 爬取作者的文章
@@ -197,7 +258,7 @@ python run.py author <作者主页URL> [选项]
 python run.py author https://xxx.lofter.com/
 
 # 只爬取包含指定tag的文章
-python run.py author https://xxx.lofter.com/ --tags "风起东宫" "太卢"
+python run.py author https://xxx.lofter.com/ --tags "tag1" "tag2"
 
 # 指定时间范围
 python run.py author https://xxx.lofter.com/ --start-time "2024-01-01" --end-time "2024-12-31"
@@ -216,11 +277,11 @@ python run.py tag-author <初始tag> <目标tag> [选项]
 
 示例：
 ```bash
-# 爬取"风起东宫"tag下的文章，然后爬取这些作者的"太卢"tag文章
-python run.py tag-author "风起东宫" "太卢" --save-path "D:\小说\小说\耽美\题材_风起东宫or太卢"
+# 爬取初始tag下的文章，然后爬取这些作者的目标tag文章
+python run.py tag-author "初始tag" "目标tag" --save-path "./articles"
 
 # 使用最热排序
-python run.py tag-author "风起东宫" "太卢" --sort total
+python run.py tag-author "初始tag" "目标tag" --sort total
 ```
 
 ### 5. 合并文件
@@ -231,19 +292,21 @@ python run.py merge <输入文件夹> [选项]
 
 功能：合并指定文件夹中的所有lofter爬取文件，按发表时间排序，每个文件作为一章。
 
+**注意**：`merge` 命令不需要授权码，可以直接使用。
+
 示例：
 ```bash
 # 合并TXT文件（默认格式），输出到项目根目录下的result文件夹
-python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢"
+python run.py merge "./articles"
 
 # 合并MD文件
-python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" -f md
+python run.py merge "./articles" -f md
 
 # 指定输出文件夹和文件名
-python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" -o "D:\合并结果" -n "合并后的小说"
+python run.py merge "./articles" -o "./merged" -n "合并后的文件"
 
 # 合并MD文件并指定输出路径
-python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" -f md -o "D:\合并结果" -n "合并后的小说"
+python run.py merge "./articles" -f md -o "./merged" -n "合并后的文件"
 ```
 
 ### 6. Markdown格式转换
@@ -254,25 +317,27 @@ python run.py md2other <Markdown文件路径> --format <格式> [选项]
 
 功能：将Markdown文件转换为PDF、EPUB、TXT、DOCX等格式。
 
+**注意**：`md2other` 命令不需要授权码，可以直接使用。
+
 示例：
 ```bash
 # 转换为PDF（输出到result目录）
-python run.py md2other "result\作者_一朵独自生存的花椰菜.md" --format pdf
+python run.py md2other "result/example.md" --format pdf
 
 # 转换为EPUB
-python run.py md2other "result\作者_一朵独自生存的花椰菜.md" --format epub
+python run.py md2other "result/example.md" --format epub
 
 # 转换为DOCX
-python run.py md2other "result\作者_一朵独自生存的花椰菜.md" --format docx
+python run.py md2other "result/example.md" --format docx
 
 # 转换为TXT
-python run.py md2other "result\作者_一朵独自生存的花椰菜.md" --format txt
+python run.py md2other "result/example.md" --format txt
 
 # 指定输出文件路径
-python run.py md2other "result\作者_一朵独自生存的花椰菜.md" --format pdf --output "output\小说.pdf"
+python run.py md2other "result/example.md" --format pdf --output "output/example.pdf"
 
 # 指定输出目录
-python run.py md2other "result\作者_一朵独自生存的花椰菜.md" --format epub --output-dir "D:\输出"
+python run.py md2other "result/example.md" --format epub --output-dir "./output"
 ```
 
 **注意**：
@@ -282,83 +347,28 @@ python run.py md2other "result\作者_一朵独自生存的花椰菜.md" --forma
 
 ## 超参数说明
 
-### 通用超参数
-
-所有命令都支持的参数：
+### 通用超参数（所有爬虫命令支持）
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--login-auth` | 字符串 | `config.py`中的默认值 | 登录授权码（LOFTER-PHONE-LOGIN-AUTH的值） |
+| `--login-auth` | 字符串 | 交互式输入或配置文件默认值 | 登录授权码（LOFTER-PHONE-LOGIN-AUTH的值） |
 | `--save-path` | 字符串 | `./result` | 文件保存路径 |
 | `--format` | 选择项 | `txt` | 文件格式：`txt` 或 `md` |
 | `--no-images` | 标志 | `False` | 不保存图片文件（仅保存文本） |
 | `--no-group` | 标志 | `False` | 不按作者分组（所有文件保存在同一文件夹） |
 
-### Tag爬取专用超参数
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--sort` | 选择项 | `new` | 排序方式：`new`(最新)、`total`(全部最热)、`month`(月榜)、`week`(周榜)、`date`(日榜) |
-| `--min-hot` | 整数 | `0` | 最低热度限制，只爬取热度大于等于此值的文章 |
-
-### 作者爬取专用超参数
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--tags` | 列表 | `None` | 目标tags列表，只爬取包含这些tag的文章（可指定多个） |
-| `--start-time` | 字符串 | `None` | 开始时间，格式：`YYYY-MM-DD`（如：`2024-01-01`） |
-| `--end-time` | 字符串 | `None` | 结束时间，格式：`YYYY-MM-DD`（如：`2024-12-31`） |
-
-### Markdown格式转换专用超参数
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--format` 或 `-f` | 选择项 | **必需** | 输出格式：`pdf`、`epub`、`txt`、`docx` |
-| `--output` 或 `-o` | 字符串 | `result/文件名.格式` | 输出文件路径（可选） |
-| `--output-dir` 或 `-d` | 字符串 | `result` | 输出目录（当未指定--output时使用） |
-
-**格式说明**：
-- `pdf`: 便携式文档格式，需要安装Pandoc和pypandoc
-- `epub`: 电子书格式，需要安装Pandoc和pypandoc
-- `txt`: 纯文本格式，无需额外依赖
-- `docx`: Word文档格式，需要安装Pandoc和pypandoc
-
-### 配置超参数
-
-在 `src/config.py` 中可以配置默认值：
-
-```python
-# 登录方式对应的key
-LOGIN_KEY = "LOFTER-PHONE-LOGIN-AUTH"
-
-# 默认登录授权码
-DEFAULT_LOGIN_AUTH = "0dbD2pHVYgD-VbrqcWd-kmazgxFq_WFQwqQsw60W3VDzx5GJmQADyAQADA1LMHZMzpE5t6U4rHExuhRX3JM0Zxm7nJatHmOI"
-
-# 默认保存路径
-DEFAULT_SAVE_PATH = "./result"
-```
-
-## 超参数详细说明
-
-### 通用超参数（所有命令支持）
-
 #### `--login-auth <授权码>`
 - **类型**: 字符串
-- **默认值**: `src/config.py` 中配置的 `DEFAULT_LOGIN_AUTH`
+- **默认值**: 交互式输入或 `src/config.py` 中配置的 `DEFAULT_LOGIN_AUTH`
 - **说明**: LOFTER登录授权码，即Cookie中`LOFTER-PHONE-LOGIN-AUTH`的值
-- **获取方式**: 
-  1. 打开LOFTER网站并登录
-  2. 按F12打开开发者工具
-  3. 切换到Network标签，刷新页面
-  4. 找到任意请求，查看Request Headers中的Cookie
-  5. 复制`LOFTER-PHONE-LOGIN-AUTH`的值
-- **示例**: `--login-auth "0dbD2pHVYgD-VbrqcWd-kmazgxFq_WFQwqQsw60W3VDzx5GJmQADyAQADA1LMHZMzpE5t6U4rHExuhRX3JM0Zxm7nJatHmOI"`
+- **获取方式**: 见上方"获取登录授权码"章节
+- **优先级**: 命令行参数 > 交互式输入 > 配置文件默认值
 
 #### `--save-path <路径>`
 - **类型**: 字符串（文件路径）
 - **默认值**: `./result`
 - **说明**: 文件保存的根目录路径
-- **示例**: `--save-path "D:\小说\小说\耽美\题材_风起东宫or太卢"`
+- **示例**: `--save-path "./my_articles"`
 
 #### `--format <格式>`
 - **类型**: 选择项（`txt` 或 `md`）
@@ -384,6 +394,11 @@ DEFAULT_SAVE_PATH = "./result"
 
 ### Tag爬取专用超参数
 
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--sort` | 选择项 | `new` | 排序方式：`new`(最新)、`total`(全部最热)、`month`(月榜)、`week`(周榜)、`date`(日榜) |
+| `--min-hot` | 整数 | `0` | 最低热度限制，只爬取热度大于等于此值的文章 |
+
 #### `--sort <排序方式>`
 - **类型**: 选择项（`new`、`total`、`month`、`week`、`date`）
 - **默认值**: `new`
@@ -404,12 +419,18 @@ DEFAULT_SAVE_PATH = "./result"
 
 ### 作者爬取专用超参数
 
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--tags` | 列表 | `None` | 目标tags列表，只爬取包含这些tag的文章（可指定多个） |
+| `--start-time` | 字符串 | `None` | 开始时间，格式：`YYYY-MM-DD`（如：`2024-01-01`） |
+| `--end-time` | 字符串 | `None` | 结束时间，格式：`YYYY-MM-DD`（如：`2024-12-31`） |
+
 #### `--tags <tag1> <tag2> ...`
 - **类型**: 字符串列表（可指定多个）
 - **默认值**: `None`（爬取所有文章）
 - **说明**: 目标tags列表，只爬取包含这些tag中任意一个的文章
 - **过滤模式**: `in`（包含模式，默认）
-- **示例**: `--tags "风起东宫" "太卢"`
+- **示例**: `--tags "tag1" "tag2"`
 
 #### `--start-time <日期>`
 - **类型**: 字符串（格式：`YYYY-MM-DD`）
@@ -442,35 +463,28 @@ Tag+作者组合爬取命令支持所有Tag爬取的超参数（`--sort`、`--mi
 - 合并后的文件会保留原文件的内容，但会去除文件头（TXT格式）或YAML Front-Matter（MD格式）
 - 每个原文件在合并后的文件中作为一章，章节标题格式为"第XX章-文件名"
 
-## 通用选项（快速参考）
+### Markdown格式转换专用超参数
 
-- `--login-auth <授权码>`: 指定登录授权码（覆盖默认值）
-- `--save-path <路径>`: 指定保存路径（默认：./result）
-- `--format <txt|md>`: 文件格式（默认：txt）
-- `--no-images`: 不保存图片文件
-- `--no-group`: 不按作者分组（所有文件保存在一个文件夹）
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--format` 或 `-f` | 选择项 | **必需** | 输出格式：`pdf`、`epub`、`txt`、`docx` |
+| `--output` 或 `-o` | 字符串 | `result/文件名.格式` | 输出文件路径（可选） |
+| `--output-dir` 或 `-d` | 字符串 | `result` | 输出目录（当未指定--output时使用） |
 
-## 文件命名规则
-
-文件命名方式参考lofterSpider-master：
-- 有标题的文章：`文章标题 by 作者名.txt`
-- 无标题的文章：`作者名-第一个tag-发表时间.txt`
-
-文件开头包含信息：
-```
-文章标题 by 作者名[作者IP]
-发表时间：2024-01-01
-原文链接： https://xxx.lofter.com/post/xxx
-```
+**格式说明**：
+- `pdf`: 便携式文档格式，需要安装Pandoc和pypandoc
+- `epub`: 电子书格式，需要安装Pandoc和pypandoc
+- `txt`: 纯文本格式，无需额外依赖
+- `docx`: Word文档格式，需要安装Pandoc和pypandoc
 
 ## 使用示例
 
 ### 完整示例1：爬取tag最新文章并按作者分组
 
 ```bash
-python run.py tag "风起东宫" \
+python run.py tag "示例tag" \
     --sort new \
-    --save-path "D:\小说\小说\耽美\题材_风起东宫or太卢" \
+    --save-path "./articles" \
     --format txt \
     --min-hot 0
 ```
@@ -478,9 +492,9 @@ python run.py tag "风起东宫" \
 ### 完整示例2：爬取tag最热文章（月榜）
 
 ```bash
-python run.py tag "风起东宫" \
+python run.py tag "示例tag" \
     --sort month \
-    --save-path "D:\小说\小说\耽美\题材_风起东宫or太卢" \
+    --save-path "./articles" \
     --format txt \
     --min-hot 50
 ```
@@ -489,8 +503,8 @@ python run.py tag "风起东宫" \
 
 ```bash
 python run.py author "https://xxx.lofter.com/" \
-    --tags "风起东宫" "太卢" \
-    --save-path "D:\小说\小说\耽美\题材_风起东宫or太卢" \
+    --tags "tag1" "tag2" \
+    --save-path "./articles" \
     --start-time "2024-01-01" \
     --end-time "2024-12-31"
 ```
@@ -498,9 +512,9 @@ python run.py author "https://xxx.lofter.com/" \
 ### 完整示例4：Tag+作者组合爬取
 
 ```bash
-python run.py tag-author "风起东宫" "太卢" \
+python run.py tag-author "初始tag" "目标tag" \
     --sort total \
-    --save-path "D:\小说\小说\耽美\题材_风起东宫or太卢" \
+    --save-path "./articles" \
     --format txt \
     --min-hot 0
 ```
@@ -511,20 +525,20 @@ python run.py tag-author "风起东宫" "太卢" \
 python run.py post "https://xxx.lofter.com/post/xxx" \
     --format md \
     --no-images \
-    --save-path "D:\小说\小说\耽美\题材_风起东宫or太卢"
+    --save-path "./articles"
 ```
 
 ### 完整示例6：合并文件
 
 ```bash
 # 合并TXT文件
-python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" -f txt
+python run.py merge "./articles" -f txt
 
 # 合并MD文件并指定输出
-python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" \
+python run.py merge "./articles" \
     -f md \
-    -o "D:\合并结果" \
-    -n "合并后的小说"
+    -o "./merged" \
+    -n "合并后的文件"
 ```
 
 ## 高级用法
@@ -532,7 +546,7 @@ python run.py merge "D:\小说\小说\耽美\题材_风起东宫or太卢" \
 ### 使用自定义登录授权码
 
 ```bash
-python run.py tag "风起东宫" \
+python run.py tag "示例tag" \
     --login-auth "你的授权码" \
     --save-path "./result"
 ```
@@ -544,26 +558,26 @@ python run.py tag "风起东宫" \
 ```python
 import subprocess
 
-tags = ["风起东宫", "太卢", "其他tag"]
+tags = ["tag1", "tag2", "tag3"]
 for tag in tags:
     subprocess.run([
         "python", "run.py", "tag", tag,
-        "--save-path", f"D:\\小说\\{tag}",
+        "--save-path", f"./articles/{tag}",
         "--sort", "total"
     ])
 ```
 
 ### Python代码调用
 
-也可以直接在Python代码中调用（参考 `example.py`）：
+也可以直接在Python代码中调用：
 
 ```python
 from src.main import crawl_tag
 
 crawl_tag(
-    tag_name="风起东宫",
+    tag_name="示例tag",
     sort_type="total",
-    save_path="D:\\小说\\小说\\耽美\\题材_风起东宫or太卢",
+    save_path="./articles",
     file_format="txt",
     group_by_author=True,
     save_images=True,
@@ -571,13 +585,26 @@ crawl_tag(
 )
 ```
 
+## 文件命名规则
+
+文件命名方式参考lofterSpider项目：
+- 有标题的文章：`文章标题 by 作者名.txt`
+- 无标题的文章：`作者名-第一个tag-发表时间.txt`
+
+文件开头包含信息：
+```
+文章标题 by 作者名[作者IP]
+发表时间：2024-01-01
+原文链接： https://xxx.lofter.com/post/xxx
+```
+
 ## 注意事项
 
-1. **登录授权码**：需要有效的登录授权码才能访问LOFTER内容。获取方式：
-   - 打开LOFTER主页，按F12打开开发者工具
-   - 切换到Network标签，刷新页面
-   - 找到XHR请求，查看Cookies中的`LOFTER-PHONE-LOGIN-AUTH`值
-   - 将值复制到`config.py`或通过`--login-auth`参数传入
+1. **登录授权码**：
+   - 需要有效的登录授权码才能访问LOFTER内容
+   - 授权码会定期过期，过期后需要重新获取
+   - 授权码是敏感信息，请妥善保管，不要泄露
+   - 获取方式见上方"获取登录授权码"章节
 
 2. **爬取频率**：大量爬取时请注意控制频率，避免对服务器造成压力。程序已内置随机延迟。
 
@@ -599,3 +626,35 @@ crawl_tag(
    - 建议保存日志以便排查问题
 
 7. **数据备份**：重要数据请及时备份，避免因程序异常导致数据丢失
+
+8. **授权码管理**：
+   - `merge` 和 `md2other` 命令不需要授权码，可以直接使用
+   - 爬虫相关命令（`post`、`tag`、`author`、`tag-author`）需要授权码
+   - 如果未通过命令行提供授权码，程序会交互式询问
+
+## 项目结构
+
+```
+LOFTER-Crawl/
+├── src/                    # 核心爬虫模块
+│   ├── main.py            # 爬虫主程序（包含命令行解析）
+│   ├── post_parser.py     # 文章解析模块
+│   ├── tag_crawler.py     # Tag爬取模块
+│   ├── author_crawler.py  # 作者爬取模块
+│   ├── file_saver.py      # 文件保存模块
+│   └── config.py          # 配置文件
+├── merge/                  # 文件合并模块
+│   ├── merge_files.py     # 合并功能实现
+│   └── README.md          # 合并功能说明
+├── md2other/              # Markdown格式转换模块
+│   ├── md2other.py        # 转换功能实现
+│   └── requirements.txt   # 转换功能依赖
+├── result/                # 默认输出目录
+├── run.py                 # 统一入口文件
+├── requirements.txt       # 项目依赖
+└── README.md              # 项目说明文档
+```
+
+## 许可证
+
+本项目基于 [lofterSpider](https://github.com/IshtarTang/lofterSpider) 项目改进，请遵守原项目的许可证要求。

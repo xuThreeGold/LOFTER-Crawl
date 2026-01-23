@@ -29,16 +29,16 @@ python merge_files.py <输入文件夹> [选项]
 
 ```bash
 # 合并TXT文件（默认格式）
-python merge_files.py "D:\小说\小说\耽美\题材_风起东宫or太卢"
+python merge_files.py "./articles"
 
 # 合并MD文件
-python merge_files.py "D:\小说\小说\耽美\题材_风起东宫or太卢" -f md
+python merge_files.py "./articles" -f md
 
 # 指定输出文件夹和文件名
-python merge_files.py "D:\小说\小说\耽美\题材_风起东宫or太卢" -o "D:\合并结果" -n "合并后的小说"
+python merge_files.py "./articles" -o "./merged" -n "合并后的文件"
 
 # 合并MD文件并指定输出路径
-python merge_files.py "D:\小说\小说\耽美\题材_风起东宫or太卢" -f md -o "D:\合并结果" -n "合并后的小说"
+python merge_files.py "./articles" -f md -o "./merged" -n "合并后的文件"
 ```
 
 ### Python代码中使用
@@ -48,17 +48,17 @@ from merge_files import merge_files
 
 # 合并TXT文件
 merge_files(
-    input_folder="D:\\小说\\小说\\耽美\\题材_风起东宫or太卢",
+    input_folder="./articles",
     output_folder="result",
-    output_filename="合并后的小说",
+    output_filename="合并后的文件",
     file_format="txt"
 )
 
 # 合并MD文件
 merge_files(
-    input_folder="D:\\小说\\小说\\耽美\\题材_风起东宫or太卢",
+    input_folder="./articles",
     output_folder="result",
-    output_filename="合并后的小说",
+    output_filename="合并后的文件",
     file_format="md"
 )
 ```
