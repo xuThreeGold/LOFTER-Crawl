@@ -6,12 +6,12 @@ LOFTER爬虫核心功能模块
 import os
 import sys
 import json
-import time
 import argparse
 from .config import DEFAULT_LOGIN_AUTH, DEFAULT_SAVE_PATH
 from .post_parser import parse_post
 from .tag_crawler import crawl_tag_posts
 from .author_crawler import get_author_info, get_author_blog_urls, check_blog_has_tag
+from .collection_crawler import get_collection_all_post_urls
 from .file_saver import save_posts, save_post_txt, save_post_markdown
 
 
@@ -301,6 +301,47 @@ def crawl_tag_then_author(tag_name, target_tag, sort_type="new", save_path=None,
             continue
 
 
+def crawl_collection(
+    collection_id,
+    save_path=None,
+    file_format="txt",
+    login_auth=None,
+    save_images=True,
+):
+    """
+    功能5: 根据合集 ID 保存该合集中的所有文章
+
+    实现思路参考 `lofter-helper-main/scripts/lofter-collection.js`：
+    1. 使用 API `postCollection.api?method=getCollectionDetail` 分页获取合集内文章列表
+    2. 从返回的 `items[*].post.blogPageUrl` 提取文章链接
+    3. 复用现有的 `save_single_post` 逐篇保存
+    """
+    if save_path is None:
+        save_path = DEFAULT_SAVE_PATH
+
+    print(f"正在爬取合集: {collection_id}")
+
+    # 步骤1：获取合集内所有文章链接
+    print("步骤1: 正在获取合集内所有文章链接...")
+    post_urls = get_collection_all_post_urls(collection_id, login_auth=login_auth)
+
+    if not post_urls:
+        print("未获取到任何文章链接，请检查合集 ID 是否正确或授权码是否有效")
+        return
+
+    print(f"步骤1完成: 获取到 {len(post_urls)} 篇文章链接")
+
+    # 步骤2：逐篇保存文章
+    print("\n步骤2: 开始依次保存合集中的文章...")
+    for i, url in enumerate(post_urls, 1):
+        try:
+            print(f"[{i}/{len(post_urls)}] 正在保存: {url}")
+            save_single_post(url, save_path, file_format, login_auth, save_images)
+        except Exception as e:
+            print(f"保存文章失败 {url}: {e}")
+
+    print(f"\n合集 {collection_id} 中的所有文章保存完成！")
+
 def add_common_args(parser):
     """添加通用参数到解析器"""
     parser.add_argument("--login-auth", type=str, default=None,
@@ -349,6 +390,15 @@ def crawler_main(args, login_auth=None):
         crawl_tag_then_author(args.tag_name, args.target_tag, args.sort, save_path,
                              file_format, group_by_author, login_auth,
                              save_images, args.min_hot)
+
+    elif args.command == "collection":
+        crawl_collection(
+            args.collection_id,
+            save_path,
+            file_format,
+            login_auth,
+            save_images,
+        )
 
 
 # ========== 授权码管理功能 ==========
@@ -494,6 +544,11 @@ def main():
                                    default="new", help="排序方式")
     parser_tag_author.add_argument("--min-hot", type=int, default=0, help="最低热度限制")
     add_common_args(parser_tag_author)
+
+    # 命令5: 根据合集 ID 保存合集内所有文章
+    parser_collection = subparsers.add_parser("collection", help="根据合集ID保存合集内所有文章")
+    parser_collection.add_argument("collection_id", type=str, help="合集ID（来自油猴脚本“复制ID”）")
+    add_common_args(parser_collection)
     
     args = parser.parse_args()
     
