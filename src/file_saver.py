@@ -46,6 +46,15 @@ def save_post_txt(post_info, save_path, save_images=True):
     
     # 构建完整内容（content中已经包含了图片链接）
     full_content = file_head + "\n\n" + content
+
+    # 在文末追加彩蛋提示或内容
+    egg_status = post_info.get("egg_status")
+    egg_hint = post_info.get("egg_hint")
+    egg_content = post_info.get("egg_content")
+    if egg_status == "locked" and egg_hint:
+        full_content += "\n\n" + egg_hint
+    elif egg_status == "unlocked" and egg_hint and egg_content:
+        full_content += "\n\n" + egg_hint + "\n\n" + str(egg_content)
     
     # 生成文件名：只使用标题内容
     title_safe = sanitize_filename(title)
@@ -428,6 +437,15 @@ def save_post_markdown(post_info, save_path, save_images=True):
     md_content += yaml_str
     md_content += "---\n\n"
     md_content += body_md
+
+    # 在Markdown文末追加彩蛋提示或内容
+    egg_status = post_info.get("egg_status")
+    egg_hint = post_info.get("egg_hint")
+    egg_content = post_info.get("egg_content")
+    if egg_status == "locked" and egg_hint:
+        md_content += f"\n\n> {egg_hint}\n"
+    elif egg_status == "unlocked" and egg_hint and egg_content:
+        md_content += f"\n\n> {egg_hint}\n\n```text\n{egg_content}\n```\n"
     
     # 生成文件名：只使用标题内容
     title = post_info.get("title", "无标题")

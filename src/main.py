@@ -8,7 +8,7 @@ import sys
 import json
 import argparse
 from .config import DEFAULT_LOGIN_AUTH, DEFAULT_SAVE_PATH
-from .post_parser import parse_post
+from .post_parser import parse_post, get_post_egg_info
 from .tag_crawler import crawl_tag_posts
 from .author_crawler import get_author_info, get_author_blog_urls, check_blog_has_tag
 from .collection_crawler import (
@@ -38,6 +38,22 @@ def save_single_post(url, save_path=None, file_format="txt", login_auth=None, sa
     print(f"正在解析文章: {url}")
     print(f"保存路径: {save_path}")
     post_info = parse_post(url, login_auth)
+
+    # 通过API尝试获取彩蛋信息，并附加到 post_info 中
+    try:
+        egg_info = get_post_egg_info(url, login_auth)
+        if egg_info:
+            egg_status = egg_info.get("egg_status")
+            print(f"[彩蛋检测] 最终状态: {egg_status}")
+            if egg_status and egg_status != "none":
+                post_info.update(egg_info)
+                print(f"[彩蛋检测] 已将彩蛋信息附加到文章信息中")
+            else:
+                print(f"[彩蛋检测] 未检测到彩蛋")
+    except Exception as e:
+        print(f"获取彩蛋信息失败（不影响正文保存）: {e}")
+        import traceback
+        traceback.print_exc()
     
     print(f"正在保存文章...")
     if file_format == "md":

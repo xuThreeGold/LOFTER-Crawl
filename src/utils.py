@@ -7,9 +7,50 @@ import random
 
 
 def get_headers():
-    """获取请求头"""
+    """获取请求头（网页版）"""
     return {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36'
+    }
+
+
+def get_app_style_headers():
+    """
+    获取模拟 LOFTER App 的请求头（参考 Loftify-main/lib/Utils/request_header_util.dart）
+    
+    这些 header 可能被服务器用来识别"这是来自官方 App 的请求"，
+    从而返回更完整的数据（比如已解锁的彩蛋内容）。
+    """
+    import base64
+    import json
+    import random
+    import string
+    
+    # 生成随机请求ID（参考 Loftify 的 getXReqId）
+    def random_string(length=8):
+        return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+    
+    # 生成 portrait（JWT payload，参考 Loftify 的 getPortrait）
+    # 注意：这里只是模拟格式，不是真正的 JWT 签名
+    portrait_payload = {
+        "imei": "3451efd56bgg6h47",
+        "androidId": "3451efd56bgg6h47",
+        "oaid": "32b4d2c348650842",
+        "mac": "02:00:00:00:00:00",
+        "phone": "15934867293",
+    }
+    # 简单 base64 编码（Loftify 用的是 JWT，但这里先简化）
+    portrait_encoded = base64.b64encode(json.dumps(portrait_payload).encode('utf-8')).decode('utf-8')
+    
+    return {
+        'User-Agent': 'LOFTER-Android 8.0.12 (23127PN0CC; Android 14; null) WIFI',
+        'x-device': 'qv+Dz73SObtbEFG7P0Gq12HkjzNb+iOK6KHWTPKHBTEZu26C6MJOMukkAG7dETo2',
+        'lofproduct': 'lofter-android-8.0.12',
+        'market': 'xiaomi',
+        'deviceid': '3451efd56bgg6h47',
+        'dadeviceid': '2ef9ea6c17b7c6881c71915a4fefd932edc01af0',
+        'androidid': '3451efd56bgg6h47',
+        'x-reqid': random_string(8),
+        'portrait': portrait_encoded,
     }
 
 

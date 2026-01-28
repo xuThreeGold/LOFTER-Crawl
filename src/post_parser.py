@@ -10,7 +10,7 @@ import requests
 from urllib.parse import unquote
 from lxml.html import etree
 import html2text
-from .utils import get_headers, decode_unicode_escape
+from .utils import get_headers, get_app_style_headers, decode_unicode_escape
 from .config import LOGIN_KEY, DEFAULT_LOGIN_AUTH
 from .parse_template import matcher, get_content
 
@@ -893,4 +893,257 @@ def parse_post(url, login_auth=None, login_key=None):
         "html_content": html_content,  # 保存原始HTML内容用于markdown转换
         "img_urls": img_urls,
         "illustration": illustration
+    }
+
+
+def _get_post_and_blog_id(url, login_auth=None, login_key=None):
+    """
+    辅助函数：从文章URL和作者信息中提取 postId 和 blogId（数值ID）。
+
+    LOFTER 的文章链接形如：
+        https://{blogName}.lofter.com/post/{hexBlogId}_{hexPostId}
+
+    其中 hexBlogId / hexPostId 是 blogId / postId 的十六进制表示。
+    这里按照同样规则反推回整数 ID，用于礼物相关 API。
+    """
+    if login_auth is None:
+        login_auth = DEFAULT_LOGIN_AUTH
+    if login_key is None:
+        login_key = LOGIN_KEY
+
+    # 规范化 URL
+    url = url.replace("http://", "https://")
+
+    # 提取作者子域名
+    author_ip_match = re.search(r"http[s]{0,1}://(.*?)\.lofter\.com", url)
+    if not author_ip_match:
+        return None, None
+    author_ip = author_ip_match.group(1)
+    author_url = f"https://{author_ip}.lofter.com/"
+
+    if "/post/" not in url:
+        return None, None
+    permalink = url.split("/post/")[-1].split("?")[0]
+
+    # 尝试从 permalink 中解析出十六进制 blogId / postId
+    hex_blog_id = None
+    hex_post_id = None
+    if "_" in permalink:
+        parts = permalink.split("_", 1)
+        hex_blog_id, hex_post_id = parts[0], parts[1]
+    else:
+        hex_post_id = permalink
+
+    post_id = None
+    blog_id = None
+
+    try:
+        if hex_post_id:
+            post_id = int(hex_post_id, 16)
+    except Exception:
+        post_id = None
+
+    # 通过作者信息获取 blogId（更可靠），同时可与 hex_blog_id 做一次比对
+    try:
+        from .author_crawler import get_author_info
+
+        author_info = get_author_info(author_url, login_auth=login_auth, login_key=login_key)
+        blog_id_str = author_info.get("author_id")
+        if blog_id_str is not None:
+            try:
+                blog_id = int(blog_id_str)
+            except Exception:
+                blog_id = None
+    except Exception as e:
+        print(f"获取作者ID失败，无法获取blogId（仅影响彩蛋检测）: {e}")
+
+    # 如果作者信息没拿到 blogId，但 permalink 里有 hex_blog_id，则退而求其次用 hex_blog_id
+    if blog_id is None and hex_blog_id:
+        try:
+            blog_id = int(hex_blog_id, 16)
+        except Exception:
+            blog_id = None
+
+    return post_id, blog_id
+
+
+def get_post_egg_info(url, login_auth=None, login_key=None):
+    """
+    通过礼物相关API判断并获取“彩蛋”（打赏返礼）信息。
+
+    返回结构：
+    {
+        "egg_status": "none" | "locked" | "unlocked",
+        "egg_hint": str 或 None,
+        "egg_content": str 或 None,  # 已解锁时，用于附加在文末的内容
+    }
+    """
+    if login_auth is None:
+        login_auth = DEFAULT_LOGIN_AUTH
+    if login_key is None:
+        login_key = LOGIN_KEY
+
+    post_id, blog_id = _get_post_and_blog_id(url, login_auth, login_key)
+    if not post_id or not blog_id:
+        return {"egg_status": "none"}
+
+    # 使用 App 风格的 headers，模拟客户端请求（可能有助于获取已解锁的彩蛋内容）
+    headers = get_app_style_headers()
+    # 在 header 里也加上登录授权（Loftify 的做法）
+    if login_auth:
+        headers[login_key.lower()] = login_auth
+    cookies = {login_key: login_auth} if login_auth else None
+
+    # 第一步：查询该文章是否有礼物/返礼配置
+    support_url = "https://api.lofter.com/v1.1/trade/gift/post/newSupportInfo"
+    support_params = {
+        "postId": post_id,
+        "blogId": blog_id,
+        "vipFans": 0,
+        "openFansVipPlan": 0,
+        "scene": "note",
+        "product": "lofter-android-8.0.12",  # Loftify 会在所有请求的 params 里加这个
+    }
+
+    try:
+        resp = requests.get(support_url, params=support_params, headers=headers, cookies=cookies, timeout=30)
+        support_json = resp.json()
+    except Exception as e:
+        print(f"获取礼物配置失败，跳过彩蛋检测: {e}")
+        return {"egg_status": "none"}
+
+    if not isinstance(support_json, dict):
+        return {"egg_status": "none"}
+
+    # 根据实际返回结构判断是否成功：code == 200 且 ok == true
+    if support_json.get("code") != 200 or not support_json.get("ok", False):
+        print(f"[彩蛋检测] newSupportInfo 返回失败: code={support_json.get('code')}, ok={support_json.get('ok')}")
+        return {"egg_status": "none"}
+
+    data = support_json.get("data", {}) or {}
+
+    # returnGifts 非空 → 存在“彩蛋返礼”配置
+    return_gifts = data.get("returnGifts") or []
+    if not isinstance(return_gifts, list) or not return_gifts:
+        print(f"[彩蛋检测] 未发现彩蛋配置 (returnGifts为空)")
+        return {"egg_status": "none"}
+    
+    print(f"[彩蛋检测] 发现彩蛋配置，returnGifts数量: {len(return_gifts)}")
+
+    # 优先检查 gainReturnGifts：如果非空，说明当前账号已经获得过返礼（已解锁）
+    gain_return_gifts = data.get("gainReturnGifts") or []
+    print(f"[彩蛋检测] gainReturnGifts数量: {len(gain_return_gifts) if isinstance(gain_return_gifts, list) else 0}")
+    # 收集需要调用的 giftId（从 returnGifts 或 gainReturnGifts）
+    gift_ids = []
+    
+    # 如果 gainReturnGifts 有数据，说明已解锁，从 gainReturnGifts 提取 giftId
+    if isinstance(gain_return_gifts, list) and gain_return_gifts:
+        print(f"[彩蛋检测] 检测到已解锁的返礼，从 gainReturnGifts 提取 giftId")
+        for g in gain_return_gifts:
+            if isinstance(g, dict):
+                # gainReturnGifts 里的 id 就是 giftId
+                if "id" in g:
+                    try:
+                        gift_ids.append(int(g["id"]))
+                    except Exception:
+                        pass
+    
+    # 如果 gainReturnGifts 为空，从 returnGifts 提取 giftId（尝试获取）
+    if not gift_ids:
+        for g in return_gifts:
+            if isinstance(g, dict) and "id" in g:
+                try:
+                    gift_ids.append(int(g["id"]))
+                except Exception:
+                    continue
+
+    if not gift_ids:
+        return {"egg_status": "none"}
+
+    # 第二步：尝试获取当前账号的“我的返礼”（是否解锁彩蛋）
+    unlocked_gifts = []
+    return_gift_url = "https://api.lofter.com/v1.1/trade/gift/myReturnGift"
+
+    for gid in gift_ids:
+        params = {
+            "postId": post_id,
+            "blogId": blog_id,
+            "id": gid,
+            "product": "lofter-android-8.0.12",  # Loftify 会在所有请求的 params 里加这个
+        }
+        try:
+            r = requests.get(return_gift_url, params=params, headers=headers, cookies=cookies, timeout=30)
+            j = r.json()
+        except Exception as e:
+            print(f"获取返礼内容失败（giftId={gid}）: {e}")
+            continue
+
+        if not isinstance(j, dict):
+            continue
+
+        # myReturnGift 的成功条件：meta.status == 200 或 code == 200 && ok == true
+        meta = j.get("meta", {}) if isinstance(j.get("meta"), dict) else {}
+        ok_by_meta = meta.get("status") == 200
+        ok_by_code = j.get("code") == 200 and j.get("ok", False)
+
+        if ok_by_meta or ok_by_code:
+            # 提取真正的文字内容
+            # 根据 Loftify 的代码：returnGiftData['data']['plan'].content
+            data = j.get("data") or j.get("response") or {}
+            plan_data = data.get("plan") or data
+            content = plan_data.get("content") or plan_data.get("text") or plan_data.get("digest") or ""
+            
+            if content:
+                unlocked_gifts.append({
+                    "giftId": gid,
+                    "content": content,
+                    "title": plan_data.get("title", ""),
+                })
+            elif data:
+                # 如果没有找到 content，打印调试信息并保存原始数据
+                print(f"[彩蛋检测] 警告：giftId={gid} 的返回数据中未找到 content 字段，数据结构: {list(data.keys()) if isinstance(data, dict) else 'not dict'}")
+                unlocked_gifts.append({"giftId": gid, "data": data})
+
+    if unlocked_gifts:
+        # 已解锁彩蛋：提取文字内容
+        print(f"[彩蛋检测] 从 myReturnGift 获取到已解锁的彩蛋内容，数量: {len(unlocked_gifts)}")
+        
+        # 合并所有彩蛋的文字内容
+        egg_texts = []
+        for gift in unlocked_gifts:
+            if gift.get("content"):
+                title = gift.get("title", "")
+                content = gift.get("content", "")
+                if title:
+                    egg_texts.append(f"## {title}\n\n{content}")
+                else:
+                    egg_texts.append(content)
+        
+        if egg_texts:
+            # 有文字内容，直接使用
+            egg_content = "\n\n---\n\n".join(egg_texts)
+            hint = "【彩蛋】本篇文章存在已解锁的彩蛋内容："
+        else:
+            # 没有找到文字内容，使用原始数据（降级处理）
+            try:
+                import json as _json
+                egg_content = _json.dumps(unlocked_gifts, ensure_ascii=False, indent=2)
+            except Exception:
+                egg_content = str(unlocked_gifts)
+            hint = "【彩蛋】本篇文章存在已解锁的彩蛋内容（以下为原始返回数据，仅供参考）："
+        
+        return {
+            "egg_status": "unlocked",
+            "egg_hint": hint,
+            "egg_content": egg_content,
+        }
+
+    # 有礼物配置但没有任何已解锁的返礼 → 视为“有彩蛋但未解锁”
+    hint_locked = (
+        "【提示】本篇文章存在彩蛋（打赏返礼），但当前账号尚未解锁。"
+        "请在 LOFTER 客户端中通过送礼/购买等方式解锁后再尝试获取。"
+    )
+    return {
+        "egg_status": "locked",
+        "egg_hint": hint_locked,
     }
