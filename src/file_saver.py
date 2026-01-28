@@ -4,9 +4,11 @@
 """
 import os
 import re
+import sys
 import requests
 import yaml
 import html2text
+from pathlib import Path
 from urllib.parse import quote
 from .utils import sanitize_filename, filename_check, get_headers
 from .config import DEFAULT_SAVE_PATH
@@ -464,6 +466,87 @@ def save_post_markdown(post_info, save_path, save_images=True):
     return filename
 
 
+def save_post_epub(post_info, save_path, save_images=True):
+    """
+    保存文章为EPUB格式
+    :param post_info: 文章信息字典
+    :param save_path: 保存路径
+    :param save_images: 是否下载并嵌入图片
+    :return: 保存的文件名
+    """
+    # 确保保存路径存在
+    os.makedirs(save_path, exist_ok=True)
+    
+    # 先保存为 Markdown 格式（临时文件）
+    temp_md_filename = save_post_markdown(post_info, save_path, save_images)
+    temp_md_path = os.path.join(save_path, temp_md_filename)
+    
+    # 生成 EPUB 文件名
+    title = post_info.get("title", "无标题")
+    title_safe = sanitize_filename(title)
+    epub_filename = f"{title_safe}.epub"
+    publish_time = post_info.get("publish_time", "")
+    
+    # 检查文件名是否重复
+    epub_path = os.path.join(save_path, epub_filename)
+    if os.path.exists(epub_path):
+        # 如果文件已存在，检查内容是否相同（通过比较 MD 文件）
+        base_name = epub_filename.rsplit(".", 1)[0]
+        num = 2
+        while True:
+            new_epub_filename = f"{base_name}({num}).epub"
+            new_epub_path = os.path.join(save_path, new_epub_filename)
+            if not os.path.exists(new_epub_path):
+                epub_filename = new_epub_filename
+                epub_path = new_epub_path
+                break
+            num += 1
+    
+    # 导入 md2other 模块的转换函数
+    try:
+        # 获取项目根目录（LOFTER-Crawl 目录）
+        # __file__ 是 src/file_saver.py，向上两级到项目根目录
+        current_dir = Path(__file__).parent.parent.absolute()
+        md2other_file = current_dir / "md2other" / "md2other.py"
+        
+        # 检查文件是否存在
+        if not md2other_file.exists():
+            raise ImportError(f"找不到 md2other 模块: {md2other_file}")
+        
+        # 使用 importlib 动态导入模块
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("md2other_module", md2other_file)
+        md2other_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(md2other_module)
+        
+        # 获取转换函数
+        convert_md_to_epub = md2other_module.convert_md_to_epub
+        
+        # 转换为 EPUB
+        print(f"正在将 Markdown 转换为 EPUB 格式...")
+        success = convert_md_to_epub(temp_md_path, epub_path)
+        
+        if success:
+            print(f"EPUB 文件已保存: {epub_path}")
+            # 删除临时 MD 文件（可选，如果需要保留 MD 文件可以注释掉）
+            # os.remove(temp_md_path)
+            return epub_filename
+        else:
+            print(f"EPUB 转换失败，保留 Markdown 文件: {temp_md_path}")
+            return temp_md_filename
+    except ImportError as e:
+        print(f"无法导入 EPUB 转换模块: {e}")
+        print(f"请确保已安装 md2other 模块的依赖（ebooklib 等）")
+        print(f"保留 Markdown 文件: {temp_md_path}")
+        return temp_md_filename
+    except Exception as e:
+        print(f"转换 EPUB 时出错: {e}")
+        import traceback
+        traceback.print_exc()
+        print(f"保留 Markdown 文件: {temp_md_path}")
+        return temp_md_filename
+
+
 def save_posts(posts, save_path, file_format="txt", group_by_author=True, save_images=True):
     """
     批量保存文章
@@ -496,6 +579,8 @@ def save_posts(posts, save_path, file_format="txt", group_by_author=True, save_i
                 try:
                     if file_format == "md":
                         filename = save_post_markdown(post, author_path, save_images)
+                    elif file_format == "epub":
+                        filename = save_post_epub(post, author_path, save_images)
                     else:
                         filename = save_post_txt(post, author_path, save_images)
                     saved_files.append(os.path.join(author_path, filename))
@@ -509,6 +594,8 @@ def save_posts(posts, save_path, file_format="txt", group_by_author=True, save_i
             try:
                 if file_format == "md":
                     filename = save_post_markdown(post, save_path, save_images)
+                elif file_format == "epub":
+                    filename = save_post_epub(post, save_path, save_images)
                 else:
                     filename = save_post_txt(post, save_path, save_images)
                 saved_files.append(os.path.join(save_path, filename))

@@ -162,6 +162,16 @@ def main():
         default=None,
         help="（可选）合集作者主页URL，例如 https://xxx.lofter.com，用于更准确地获取合集名和作者名",
     )
+    parser_collection.add_argument(
+        "--merge",
+        action="store_true",
+        help="爬取完成后，将该合集内所有文章合并为一个文件（txt/md 直接合并，epub 通过合并后的 md 转换）",
+    )
+    parser_collection.add_argument(
+        "--merge-add-toc",
+        action="store_true",
+        help="在合并后的单一文件开头生成目录（仅对 txt/md 有效）",
+    )
     add_common_args(parser_collection)
 
     # 命令6: 指定作者主页，获取该作者所有合集并分别保存
@@ -169,6 +179,16 @@ def main():
         "author-collections", help="根据作者主页URL获取作者所有合集，并分别保存合集内所有文章"
     )
     parser_author_collections.add_argument("author_url", type=str, help="作者主页URL，例如 https://xxx.lofter.com")
+    parser_author_collections.add_argument(
+        "--merge",
+        action="store_true",
+        help="爬取完成后，为每个合集额外生成一个“合并后的单一文件”（txt/md 直接合并，epub 通过合并后的 md 转换）",
+    )
+    parser_author_collections.add_argument(
+        "--merge-add-toc",
+        action="store_true",
+        help="在每个合集的合并文件开头生成目录（仅对 txt/md 有效）",
+    )
     add_common_args(parser_author_collections)
     
     # ========== 文件处理相关命令 ==========

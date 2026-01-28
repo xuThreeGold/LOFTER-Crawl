@@ -34,14 +34,16 @@
 - 添加了Markdown格式转换功能
 - 改进了代码结构，提高了可维护性
 
-在实现合集爬取和部分接口访问时，还参考了以下项目的思路和实现：
+在实现合集爬取、彩蛋获取和部分接口访问时，还参考了以下项目的思路和实现：
 
 - [lofter-helper](https://github.com/SrakhiuMeow/lofter-helper)：用于理解网页版 Lofter 合集列表与合集详情相关接口（`postCollection.api`）、合集展示逻辑等
-- [Loftify](https://github.com/Robert-Stackflow/Loftify)：用于参考 LOFTER 移动端/第三方客户端中对非公开 API 的调用方式（如帖子详情、礼物/合集等接口）
+- [Loftify](https://github.com/Robert-Stackflow/Loftify)：用于参考 LOFTER 移动端/第三方客户端中对非公开 API 的调用方式（如帖子详情、礼物/合集等接口），特别是彩蛋（打赏返礼）相关的 API 调用和请求头设置
 
 ## 功能特性
 
 1. **单篇文章保存**：给定网页链接，将内容保存为文件
+   - **自动检测和保存彩蛋内容**：如果文章包含已解锁的彩蛋（打赏返礼），会自动提取并附加到文章末尾
+   - 支持TXT和Markdown两种格式
 2. **Tag爬取**：爬取指定tag下的所有文件，支持按作者分类存储
    - 排序方式：最新、最热
    - 最热排序：日榜、周榜、月榜、全部（默认）
@@ -60,7 +62,7 @@
    - 支持转换为PDF、EPUB、TXT、DOCX格式
    - 可指定输入文件和输出路径
    - 默认输出到result目录
-7. **文件格式**：
+8. **文件格式**：
    - TXT格式：图片链接保存在txt中，图片文件单独保存
    - Markdown格式：图片直接嵌入文件
 
@@ -208,12 +210,17 @@ python run.py md2other --help
 python run.py post <文章URL> [选项]
 ```
 
+**功能说明**：
+- 解析并保存单篇文章，支持自动检测和保存彩蛋内容
+- 如果文章包含已解锁的彩蛋（打赏返礼），会自动提取并附加到文章末尾
+- 支持TXT和Markdown两种格式
+
 示例：
 ```bash
 # 保存为TXT格式（默认）
 python run.py post https://xxx.lofter.com/post/xxx
 
-# 保存为Markdown格式
+# 保存为Markdown格式（推荐，彩蛋内容会以更好的格式显示）
 python run.py post https://xxx.lofter.com/post/xxx --format md
 
 # 指定保存路径
@@ -222,6 +229,12 @@ python run.py post https://xxx.lofter.com/post/xxx --save-path "./my_articles"
 # 不保存图片
 python run.py post https://xxx.lofter.com/post/xxx --no-images
 ```
+
+**彩蛋功能说明**：
+- 如果文章包含已解锁的彩蛋内容，程序会自动检测并在文章末尾附加彩蛋文字
+- 彩蛋内容会以清晰的格式显示（Markdown格式下会以代码块或正文形式展示）
+- 如果彩蛋未解锁，会在文章末尾显示提示信息
+- 彩蛋检测需要有效的登录授权码（必须是已解锁该彩蛋的账号）
 
 ### 2. 爬取Tag下的所有文章
 
@@ -333,7 +346,7 @@ python run.py merge "./articles" -f txt --add-toc
 #### 6.1 根据合集ID保存合集内所有文章
 
 ```bash
-python run.py collection <合集ID> [选项]
+python run.py collection <合集ID或合集分享链接> [选项]
 ```
 
 **默认保存规则**：
@@ -341,24 +354,27 @@ python run.py collection <合集ID> [选项]
 - 如果使用默认保存路径（不传 `--save-path` 或传入 `./result`）：
   - 单个合集会保存到 `result/合集_合集名(合集ID)-作者名/` 目录下  
   - 例如：  
-    - 合集链接：`https://www.lofter.com/front/blog/collection/share?collectionId=22156646&incantation=xxx`  
-    - 合集名：`阖家欢乐`，作者名：`一朵独自生存的花椰菜`  
-    - 文章将保存到：`result/合集_阖家欢乐(22156646)-一朵独自生存的花椰菜/`
+    - 合集链接：`https://www.lofter.com/front/blog/collection/share?collectionId=合集ID&incantation=xxx`  
+    - 合集名：`示例合集名`，作者名：`示例作者名`  
+    - 文章将保存到：`result/合集_示例合集名(合集ID)-示例作者名/`
 
 示例：
 
 ```bash
 # 保存为TXT格式（默认）
-python run.py collection 22156646
+python run.py collection 12345678
+
+# 也可以直接使用合集分享链接
+python run.py collection "https://www.lofter.com/front/blog/collection/share?collectionId=12345678&incantation=xxx"
 
 # 保存为Markdown格式
-python run.py collection 22156646 --format md
+python run.py collection 12345678 --format md
 
 # 提供作者主页URL，以更准确获得合集名和作者名（推荐）
-python run.py collection 22156646 --author-url https://chaoxinian.lofter.com/
+python run.py collection 12345678 --author-url https://example.lofter.com/
 
 # 指定根保存路径（仍会在其下创建“合集名(合集ID)-作者名”文件夹）
-python run.py collection 22156646 --save-path "./my_result"
+python run.py collection 12345678 --save-path "./my_result"
 ```
 
 #### 6.2 根据作者主页保存该作者的所有合集及其文章
@@ -373,25 +389,62 @@ python run.py author-collections <作者主页URL> [选项]
   - 会在 `result/作者_作者名/` 目录下，为每个合集创建子文件夹：  
     `合集_合集名(合集ID)-作者名/`
   - 例如：  
-    - 作者主页：`https://chaoxinian.lofter.com/`  
-    - 假设作者名是 `一朵独自生存的花椰菜`，合集 `阖家欢乐(22156646)`  
+    - 作者主页：`https://example.lofter.com/`  
+    - 假设作者名是 `示例作者名`，合集 `示例合集名(合集ID)`  
     - 所有合集文章最终路径类似：
-      - `result/作者_一朵独自生存的花椰菜/合集_阖家欢乐(22156646)-一朵独自生存的花椰菜/`
+      - `result/作者_示例作者名/合集_示例合集名(合集ID)-示例作者名/`
 
 示例：
 
 ```bash
 # 保存某作者的所有合集里的文章为TXT格式
-python run.py author-collections https://chaoxinian.lofter.com/
+python run.py author-collections https://example.lofter.com/
 
 # 保存为Markdown格式
-python run.py author-collections https://chaoxinian.lofter.com/ --format md
+python run.py author-collections https://example.lofter.com/ --format md
 
 # 指定根保存路径（会在其下创建“作者名/合集名(合集ID)-作者名/”结构）
-python run.py author-collections https://chaoxinian.lofter.com/ --save-path "./my_result"
+python run.py author-collections https://example.lofter.com/ --save-path "./my_result"
 ```
 
-### 7. Markdown格式转换
+### 7. 合集相关功能（续）
+
+#### 合集合并逻辑说明
+
+当使用 `--merge` / `--merge-add-toc` 选项时，合集内合并文件的规则如下：
+
+- **合并范围**：
+  - `collection`：只合并当前这个合集目录下的所有已保存文章文件。
+  - `author-collections`：对该作者的**每一个合集目录**各自独立合并一份。
+
+- **排序方式（默认）**：
+  - 合并时按**发表时间升序**排序（越早的章节越靠前）。
+  - 发表时间来自每个文件头部的“发表时间”字段（TXT）或 Front-Matter 中的 `date` 字段（MD）；若无法解析，则退回到文件修改时间。
+
+- **文件格式与命名**：
+  - 当 `--format txt` 或 `--format md` 时：
+    - 直接调用内部的合并逻辑，输出一个大文件：
+      - `合并_合集_合集名(合集ID)-作者名.txt`
+      - 或 `合并_合集_合集名(合集ID)-作者名.md`
+  - 当 `--format epub` 时：
+    - 先按照上面规则合并出一个 Markdown 文件：
+      - `合并_合集_合集名(合集ID)-作者名.md`
+    - 再基于这个 MD 调用 `md2other` 转换为：
+      - `合并_合集_合集名(合集ID)-作者名.epub`
+
+- **目录（TOC）控制**：
+  - 仅对 TXT/MD 合并时生效（EPUB 的目录来自合并后的 MD 结构）：
+    - 不加 `--merge-add-toc`：合并文件**不**自动生成目录。
+    - 加上 `--merge-add-toc`：
+      - TXT：在文件开头生成一个纯文本目录。
+      - MD：在文件开头生成一个 Markdown 目录（章节标题可点击跳转）。
+
+**彩蛋功能**：
+- 合集爬取功能同样支持自动检测和保存彩蛋内容
+- 如果合集内的文章包含已解锁的彩蛋，会自动提取并附加到对应文章末尾
+- 使用方法与单篇文章保存相同，只需提供有效的登录授权码
+
+### 8. Markdown格式转换
 
 ```bash
 python run.py md2other <Markdown文件路径> --format <格式> [选项]
@@ -530,6 +583,25 @@ python run.py md2other "result/example.md" --format epub --output-dir "./output"
 
 Tag+作者组合爬取命令支持所有Tag爬取的超参数（`--sort`、`--min-hot`）和通用超参数。
 
+### 合集相关功能超参数
+
+合集相关功能（`collection` 和 `author-collections`）支持所有通用超参数，此外还有：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--author-url` | 字符串 | `None` | 作者主页URL（仅 `collection` 命令支持，用于更准确获取合集名和作者名） |
+
+#### `--author-url <URL>`
+- **类型**: 字符串（URL）
+- **默认值**: `None`
+- **说明**: 作者主页URL，用于更准确获取合集名和作者名（仅 `collection` 命令支持）
+- **使用场景**: 当无法从合集ID直接获取准确的合集名和作者名时使用
+- **示例**: `--author-url https://chaoxinian.lofter.com/`
+
+**注意**：
+- 合集爬取功能同样支持彩蛋检测，如果合集内的文章包含已解锁的彩蛋，会自动提取并保存
+- 彩蛋检测需要有效的登录授权码（必须是已解锁该彩蛋的账号）
+
 ### 文件合并超参数
 
 | 参数 | 类型 | 默认值 | 说明 |
@@ -618,7 +690,29 @@ python run.py post "https://xxx.lofter.com/post/xxx" \
     --save-path "./articles"
 ```
 
-### 完整示例6：合并文件
+### 完整示例6：保存文章并自动获取彩蛋内容
+
+```bash
+# 保存文章（如果包含已解锁的彩蛋，会自动附加到文章末尾）
+python run.py post "https://xxx.lofter.com/post/xxx" \
+    --format md \
+    --save-path "./articles"
+
+# 注意：必须使用已解锁彩蛋的账号的授权码
+# 如果彩蛋未解锁，会在文章末尾显示提示信息
+```
+
+### 完整示例7：保存合集文章（自动获取彩蛋）
+
+```bash
+# 保存合集内所有文章，如果文章包含已解锁的彩蛋，会自动附加
+python run.py collection 12345678 \
+    --format md \
+    --author-url https://example.lofter.com/ \
+    --save-path "./result"
+```
+
+### 完整示例8：合并文件
 
 ```bash
 # 合并TXT文件
@@ -695,6 +789,85 @@ crawl_tag(
 原文链接： https://xxx.lofter.com/post/xxx
 ```
 
+## 彩蛋功能说明
+
+### 什么是彩蛋？
+
+LOFTER 的"彩蛋"是指作者设置的打赏返礼内容。读者通过给文章打赏（送礼物），可以获得作者预设的返礼内容，这些内容通常是文章的额外章节、番外、隐藏剧情等。
+
+### 如何获取彩蛋内容？
+
+本工具支持自动检测和保存已解锁的彩蛋内容，使用方法如下：
+
+#### 前置条件
+
+1. **必须使用已解锁彩蛋的账号**：
+   - 你需要在 LOFTER 客户端（App）中，通过打赏/送礼的方式解锁该文章的彩蛋
+   - 只有已解锁的彩蛋才能被工具检测和保存
+
+2. **获取正确的登录授权码**：
+   - 使用**手机号登录**的账号，获取 `LOFTER-PHONE-LOGIN-AUTH` Cookie 值
+   - 授权码获取方式见上方"获取登录授权码"章节
+   - **重要**：必须使用与解锁彩蛋时相同的账号
+
+#### 使用方法
+
+保存单篇文章时，如果文章包含已解锁的彩蛋，程序会自动检测并附加到文章末尾：
+
+```bash
+# 保存文章（自动检测彩蛋）
+python run.py post https://xxx.lofter.com/post/xxx --format md
+```
+
+#### 彩蛋内容显示方式
+
+- **Markdown格式（推荐）**：
+  - 彩蛋内容会以清晰的格式显示在文章末尾
+  - 如果彩蛋有标题，会显示标题和正文
+  - 如果彩蛋未解锁，会显示提示信息
+
+- **TXT格式**：
+  - 彩蛋内容会以文本形式附加在文章末尾
+  - 如果彩蛋未解锁，会显示提示信息
+
+#### 彩蛋检测流程
+
+1. 程序会调用 LOFTER API 检测文章是否包含彩蛋配置
+2. 如果检测到彩蛋，会检查当前账号是否已解锁（通过 `gainReturnGifts` 字段判断）
+3. 如果已解锁，会调用 `myReturnGift` API 获取彩蛋的实际文字内容
+4. 将彩蛋内容提取并附加到保存的文件末尾
+
+#### 常见问题
+
+**Q: 为什么我在 App 中已经解锁了彩蛋，但工具检测不到？**
+
+A: 可能的原因：
+- 授权码过期或无效，需要重新获取
+- 使用的授权码与解锁彩蛋时的账号不一致
+- 网络问题导致 API 调用失败
+
+**Q: 彩蛋内容显示为 JSON 数据怎么办？**
+
+A: 这通常表示彩蛋内容提取失败。请检查：
+- 授权码是否有效
+- 是否使用了正确的账号（与解锁彩蛋时相同的账号）
+- 查看终端输出的调试信息（`[彩蛋检测]` 开头的日志）
+
+**Q: 如何确认彩蛋是否已解锁？**
+
+A: 在 LOFTER App 中打开文章，如果能看到彩蛋内容，说明已解锁。工具会使用相同的账号状态进行检测。
+
+#### 技术实现
+
+本工具通过模拟 LOFTER 移动端 App 的请求方式（参考 [Loftify](https://github.com/Robert-Stackflow/Loftify) 项目），使用以下 API 获取彩蛋内容：
+
+1. `/v1.1/trade/gift/post/newSupportInfo`：检测文章是否包含彩蛋配置
+2. `/v1.1/trade/gift/myReturnGift`：获取已解锁彩蛋的实际文字内容
+
+这些 API 调用需要：
+- 有效的登录授权码（`LOFTER-PHONE-LOGIN-AUTH`）
+- 模拟移动端 App 的请求头（User-Agent、设备标识等）
+
 ## 注意事项
 
 1. **登录授权码**：
@@ -702,6 +875,7 @@ crawl_tag(
    - 授权码会定期过期，过期后需要重新获取
    - 授权码是敏感信息，请妥善保管，不要泄露
    - 获取方式见上方"获取登录授权码"章节
+   - **彩蛋功能**：必须使用与解锁彩蛋时相同的账号的授权码
 
 2. **爬取频率**：大量爬取时请注意控制频率，避免对服务器造成压力。程序已内置随机延迟。
 
@@ -726,8 +900,14 @@ crawl_tag(
 
 8. **授权码管理**：
    - `merge` 和 `md2other` 命令不需要授权码，可以直接使用
-   - 爬虫相关命令（`post`、`tag`、`author`、`tag-author`）需要授权码
+   - 爬虫相关命令（`post`、`tag`、`author`、`tag-author`、`collection`、`author-collections`）需要授权码
    - 如果未通过命令行提供授权码，程序会交互式询问
+
+9. **彩蛋功能注意事项**：
+   - 彩蛋检测和获取需要有效的登录授权码
+   - 必须使用已解锁彩蛋的账号的授权码
+   - 如果彩蛋未解锁，会在文章末尾显示提示信息，不会影响正文保存
+   - 彩蛋内容提取失败时，会显示调试信息，便于排查问题
 
 ## 项目结构
 

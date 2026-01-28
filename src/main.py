@@ -16,7 +16,7 @@ from .collection_crawler import (
     get_collections_by_author_url,
     get_collection_meta,
 )
-from .file_saver import save_posts, save_post_txt, save_post_markdown
+from .file_saver import save_posts, save_post_txt, save_post_markdown, save_post_epub
 
 
 def save_single_post(url, save_path=None, file_format="txt", login_auth=None, save_images=True):
@@ -58,6 +58,8 @@ def save_single_post(url, save_path=None, file_format="txt", login_auth=None, sa
     print(f"正在保存文章...")
     if file_format == "md":
         filename = save_post_markdown(post_info, save_path, save_images)
+    elif file_format == "epub":
+        filename = save_post_epub(post_info, save_path, save_images)
     else:
         filename = save_post_txt(post_info, save_path, save_images)
     
@@ -127,6 +129,9 @@ def crawl_tag(tag_name, sort_type="new", save_path=None, file_format="txt",
                     if file_format == "md":
                         from .file_saver import save_post_markdown
                         filename = save_post_markdown(post_info, author_path, save_images)
+                    elif file_format == "epub":
+                        from .file_saver import save_post_epub
+                        filename = save_post_epub(post_info, author_path, save_images)
                     else:
                         from .file_saver import save_post_txt
                         filename = save_post_txt(post_info, author_path, save_images)
@@ -328,6 +333,8 @@ def crawl_collection(
     login_auth=None,
     save_images=True,
     author_url=None,
+    merge_into_one=False,
+    merge_add_toc=False,
 ):
     """
     功能5: 根据合集 ID 保存该合集中的所有文章
@@ -339,6 +346,19 @@ def crawl_collection(
     """
     if save_path is None:
         save_path = DEFAULT_SAVE_PATH
+
+    # 允许传入纯合集ID或完整合集分享链接
+    original_collection_id = str(collection_id)
+    # 如果参数是 URL 或包含 collectionId=，尝试从中提取合集ID
+    if "http://" in original_collection_id or "https://" in original_collection_id or "collectionId=" in original_collection_id:
+        try:
+            import re as _re
+            m = _re.search(r"collectionId=(\d+)", original_collection_id)
+            if m:
+                collection_id = m.group(1)
+                print(f"已从合集链接中解析出合集ID: {collection_id}")
+        except Exception:
+            pass
 
     # 解析合集基础信息（名称、作者），仅用于生成文件夹名
     collection_name = f"collection_{collection_id}"
@@ -417,6 +437,76 @@ def crawl_collection(
 
     print(f"\n合集 {collection_id} 中的所有文章保存完成！")
 
+    # 步骤3：根据需要，将合集内所有文件合并为一个文件
+    if merge_into_one:
+        try:
+            # 基础文件名：合并_合集_合集名(合集ID)-作者名
+            base_merged_name = f"合并_{folder_name}"
+
+            # 准备 merge_files 函数
+            import sys as _sys
+            from pathlib import Path as _Path
+
+            project_root = _Path(__file__).parent.parent  # LOFTER-Crawl 根目录
+            merge_dir = project_root / "merge"
+            if str(merge_dir) not in _sys.path:
+                _sys.path.insert(0, str(merge_dir))
+
+            from merge_files import merge_files  # type: ignore
+
+            # 根据文件格式选择合并策略
+            # 对于 txt / md：直接调用 merge 模块合并
+            if file_format in ("txt", "md"):
+                print(f"\n步骤3: 正在合并合集内所有 {file_format.upper()} 文件为单一文件...")
+                merge_files(
+                    input_folder=save_path,
+                    output_folder=save_path,
+                    output_filename=base_merged_name,
+                    file_format=file_format,
+                    add_toc=merge_add_toc,
+                    toc_links=True,
+                )
+            # 对于 epub：先合并 Markdown，再调用 md2other 转 EPUB
+            elif file_format == "epub":
+                import os as _os
+                import importlib.util
+
+                merged_md_name = base_merged_name  # 不带扩展名
+                print(f"\n步骤3: 先将合集内所有 Markdown 文件合并为单一文件...")
+                merge_files(
+                    input_folder=save_path,
+                    output_folder=save_path,
+                    output_filename=merged_md_name,
+                    file_format="md",
+                    add_toc=merge_add_toc,
+                    toc_links=True,
+                )
+
+                # 然后将合并后的 MD 转为 EPUB
+                merged_md_path = _os.path.join(save_path, f"{merged_md_name}.md")
+                merged_epub_path = _os.path.join(save_path, f"{merged_md_name}.epub")
+
+                try:
+                    md2other_file = project_root / "md2other" / "md2other.py"
+                    if not md2other_file.exists():
+                        raise ImportError(f"找不到 md2other 模块: {md2other_file}")
+
+                    spec = importlib.util.spec_from_file_location("md2other_module", md2other_file)
+                    md2other_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(md2other_module)  # type: ignore
+                    convert_md_to_epub = md2other_module.convert_md_to_epub  # type: ignore
+
+                    print(f"正在将合并后的 Markdown 转换为 EPUB 格式...")
+                    success = convert_md_to_epub(merged_md_path, merged_epub_path)
+                    if success:
+                        print(f"合并后的 EPUB 文件已保存: {merged_epub_path}")
+                    else:
+                        print(f"合并后的 EPUB 转换失败，请检查 md2other 依赖是否正确安装")
+                except Exception as e:
+                    print(f"合并后的 EPUB 转换过程中出错: {e}")
+        except Exception as e:
+            print(f"合并合集文件时发生错误（不影响单篇文件）：{e}")
+
 
 def crawl_author_collections(
     author_url,
@@ -424,6 +514,8 @@ def crawl_author_collections(
     file_format="txt",
     login_auth=None,
     save_images=True,
+    merge_into_one=False,
+    merge_add_toc=False,
 ):
     """
     功能6: 获取指定作者的所有合集，并分别保存每个合集里的所有文章
@@ -481,6 +573,8 @@ def crawl_author_collections(
             file_format=file_format,
             login_auth=login_auth,
             save_images=save_images,
+            merge_into_one=merge_into_one,
+            merge_add_toc=merge_add_toc,
         )
 
 def add_common_args(parser):
@@ -489,8 +583,8 @@ def add_common_args(parser):
                         help="登录授权码，如果不指定则使用默认值")
     parser.add_argument("--save-path", type=str, default=None,
                         help=f"保存路径，默认: {DEFAULT_SAVE_PATH}")
-    parser.add_argument("--format", type=str, choices=["txt", "md"], default="txt",
-                        help="文件格式: txt 或 md (默认: txt)")
+    parser.add_argument("--format", type=str, choices=["txt", "md", "epub"], default="txt",
+                        help="文件格式: txt、md 或 epub (默认: txt)")
     parser.add_argument("--no-images", action="store_true",
                         help="不保存图片文件")
     parser.add_argument("--no-group", action="store_true",
@@ -540,6 +634,8 @@ def crawler_main(args, login_auth=None):
             login_auth,
             save_images,
             getattr(args, "author_url", None),
+            getattr(args, "merge", False),
+            getattr(args, "merge_add_toc", False),
         )
 
     elif args.command == "author-collections":
@@ -549,6 +645,8 @@ def crawler_main(args, login_auth=None):
             file_format,
             login_auth,
             save_images,
+            getattr(args, "merge", False),
+            getattr(args, "merge_add_toc", False),
         )
 
 
