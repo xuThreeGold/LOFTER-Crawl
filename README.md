@@ -1,6 +1,8 @@
 # LOFTER爬虫工具
 
-基于 [lofterSpider](https://github.com/IshtarTang/lofterSpider) 项目改进的LOFTER内容爬取工具。
+基于 [lofterSpider](https://github.com/IshtarTang/lofterSpider) 项目改进，并参考  
+[lofter-helper](https://github.com/SrakhiuMeow/lofter-helper)、  
+[Loftify](https://github.com/Robert-Stackflow/Loftify) 等项目实现的 LOFTER 内容爬取与管理工具。
 
 ## 项目介绍
 
@@ -101,24 +103,24 @@ cd LOFTER-Crawl
 
 ### 2. 安装依赖包
 
-```bash
-pip install -r requirements.txt
-```
+项目分为两部分依赖：
 
-**Markdown格式转换功能（可选）**：
+1. **核心爬虫功能依赖（必须）**  
+   安装根目录下的依赖：
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-如果需要使用 `md2other` 命令进行格式转换，需要额外安装依赖：
+2. **Markdown 转其他格式功能依赖（可选，仅在使用 `md2other` 或 EPUB/PDF/DOCX 时需要）**  
+   进入 `md2other` 目录安装：
+   ```bash
+   cd md2other
+   pip install -r requirements.txt
+   ```
 
-```bash
-# 进入md2other目录
-cd md2other
-pip install -r requirements.txt
-```
-
-**注意**：
-- PDF、EPUB、DOCX格式转换需要安装Pandoc（https://pandoc.org/installing.html）
-- TXT格式转换无需额外依赖，可直接使用
-- 如果遇到网络问题，可以使用conda安装：`conda install -c conda-forge markdown pypandoc`
+说明：
+- `md2other` 是**纯 Python 实现**的转换工具，不再依赖 Pandoc / LaTeX / wkhtmltopdf 等外部程序。
+- TXT 转换几乎零额外依赖，PDF / EPUB / DOCX 转换所需的第三方库都已在 `md2other/requirements.txt` 中列出（如 `fpdf2`、`ebooklib`、`python-docx`、`markdown`、`beautifulsoup4`、`Pillow` 等）。
 
 **如果遇到编译错误**（特别是 Windows 用户）：
 
@@ -634,10 +636,10 @@ Tag+作者组合爬取命令支持所有Tag爬取的超参数（`--sort`、`--mi
 | `--output-dir` 或 `-d` | 字符串 | `result` | 输出目录（当未指定--output时使用） |
 
 **格式说明**：
-- `pdf`: 便携式文档格式，需要安装Pandoc和pypandoc
-- `epub`: 电子书格式，需要安装Pandoc和pypandoc
-- `txt`: 纯文本格式，无需额外依赖
-- `docx`: Word文档格式，需要安装Pandoc和pypandoc
+- `pdf`: 便携式文档格式，使用 `fpdf2` 等纯 Python 库生成（依赖见 `md2other/requirements.txt`）
+- `epub`: 电子书格式，使用 `ebooklib` 等库生成
+- `txt`: 纯文本格式，无需额外系统依赖
+- `docx`: Word文档格式，使用 `python-docx` 等库生成
 
 ## 使用示例
 
@@ -934,4 +936,8 @@ LOFTER-Crawl/
 
 ## 许可证
 
-本项目基于 [lofterSpider](https://github.com/IshtarTang/lofterSpider) 项目改进，请遵守原项目的许可证要求。
+本项目基于并参考以下开源项目发展而来，请在使用本项目时一并遵守相关项目的许可证要求：
+
+- [lofterSpider](https://github.com/IshtarTang/lofterSpider)
+- [lofter-helper](https://github.com/SrakhiuMeow/lofter-helper)
+- [Loftify](https://github.com/Robert-Stackflow/Loftify)
