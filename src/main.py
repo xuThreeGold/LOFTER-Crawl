@@ -11,7 +11,11 @@ from .config import DEFAULT_LOGIN_AUTH, DEFAULT_SAVE_PATH
 from .post_parser import parse_post
 from .tag_crawler import crawl_tag_posts
 from .author_crawler import get_author_info, get_author_blog_urls, check_blog_has_tag
-from .collection_crawler import get_collection_all_post_urls
+from .collection_crawler import (
+    get_collection_all_post_urls,
+    get_collections_by_author_url,
+    get_collection_meta,
+)
 from .file_saver import save_posts, save_post_txt, save_post_markdown
 
 
@@ -307,6 +311,7 @@ def crawl_collection(
     file_format="txt",
     login_auth=None,
     save_images=True,
+    author_url=None,
 ):
     """
     功能5: 根据合集 ID 保存该合集中的所有文章
@@ -319,7 +324,61 @@ def crawl_collection(
     if save_path is None:
         save_path = DEFAULT_SAVE_PATH
 
-    print(f"正在爬取合集: {collection_id}")
+    # 解析合集基础信息（名称、作者），仅用于生成文件夹名
+    collection_name = f"collection_{collection_id}"
+    author_name = "未知作者"
+
+    # 如果提供了作者主页 URL，优先通过作者信息 + 合集列表精确获取名称
+    if author_url:
+        try:
+            # 作者名：从作者信息中获取（更可靠）
+            author_info = get_author_info(author_url, login_auth=login_auth)
+            author_name = author_info.get("author_name", author_name)
+
+            # 合集名：在该作者的合集列表中寻找匹配的 ID
+            collections = get_collections_by_author_url(author_url, login_auth=login_auth)
+            for c in collections:
+                if str(c.get("id")) == str(collection_id):
+                    collection_name = c.get("name", collection_name)
+                    break
+        except Exception as e:
+            print(f"通过作者主页获取合集信息失败，将尝试通用方式（仅影响文件夹命名）: {e}")
+
+    # 如果仍然是默认占位名或作者未知，再尝试通用的合集详情接口获取元信息
+    if collection_name.startswith("collection_") or author_name == "未知作者":
+        try:
+            detail = get_collection_meta(collection_id, login_auth=login_auth)
+            if detail:
+                if collection_name.startswith("collection_"):
+                    collection_name = detail.get("name", collection_name)
+                # blogs 或 blogList 中通常会包含作者信息
+                if author_name == "未知作者":
+                    blogs = detail.get("blogs") or detail.get("blogList") or []
+                    if blogs and isinstance(blogs, list):
+                        blog = blogs[0]
+                        author_name = (
+                            blog.get("blogNickName")
+                            or blog.get("blogNick")
+                            or blog.get("blogName")
+                            or blog.get("blogNickName".lower())
+                            or author_name
+                        )
+        except Exception as e:
+            print(f"获取合集元信息失败（仅影响文件夹命名，可忽略）: {e}")
+
+    from .utils import sanitize_filename
+    safe_collection_name = sanitize_filename(collection_name)
+    safe_author_name = sanitize_filename(author_name)
+    # 单个合集：result/合集_合集名(合集ID)-作者名
+    folder_name = f"合集_{safe_collection_name}({collection_id})-{safe_author_name}"
+
+    # 默认：result/合集名(合集ID)-作者名
+    if save_path == DEFAULT_SAVE_PATH:
+        save_path = os.path.join(DEFAULT_SAVE_PATH, folder_name)
+
+    os.makedirs(save_path, exist_ok=True)
+
+    print(f"正在爬取合集: {collection_id}，保存到: {save_path}")
 
     # 步骤1：获取合集内所有文章链接
     print("步骤1: 正在获取合集内所有文章链接...")
@@ -341,6 +400,72 @@ def crawl_collection(
             print(f"保存文章失败 {url}: {e}")
 
     print(f"\n合集 {collection_id} 中的所有文章保存完成！")
+
+
+def crawl_author_collections(
+    author_url,
+    save_path=None,
+    file_format="txt",
+    login_auth=None,
+    save_images=True,
+):
+    """
+    功能6: 获取指定作者的所有合集，并分别保存每个合集里的所有文章
+
+    实现步骤：
+    1. 使用 postCollection.api?method=getCollectionList 获取作者的合集列表
+    2. 遍历每个合集，构造子目录，例如 result/作者合集/【合集名】(ID)
+    3. 在每个子目录下调用 crawl_collection 保存该合集中的全部文章
+    """
+    from .utils import sanitize_filename
+    if save_path is None:
+        save_path = DEFAULT_SAVE_PATH
+
+    print(f"正在获取作者 {author_url} 的信息和合集列表...")
+
+    # 获取作者名，用于外层作者文件夹命名
+    try:
+        author_info = get_author_info(author_url, login_auth=login_auth)
+        author_name = author_info.get("author_name", "未知作者")
+    except Exception as e:
+        print(f"获取作者信息失败，将作者名设为“未知作者”：{e}")
+        author_name = "未知作者"
+
+    author_folder_name = sanitize_filename(author_name)
+    # 默认：result/作者_作者名
+    author_folder_with_prefix = f"作者_{author_folder_name}"
+    if save_path == DEFAULT_SAVE_PATH:
+        base_path = os.path.join(DEFAULT_SAVE_PATH, author_folder_with_prefix)
+    else:
+        base_path = os.path.join(save_path, author_folder_with_prefix)
+
+    os.makedirs(base_path, exist_ok=True)
+
+    collections = get_collections_by_author_url(author_url, login_auth=login_auth)
+
+    if not collections:
+        print("未获取到任何合集，请确认作者主页是否存在、以及授权码是否有效")
+        return
+
+    print(f"共获取到 {len(collections)} 个合集，开始逐个保存...")
+
+    for idx, c in enumerate(collections, 1):
+        collection_id = str(c.get("id"))
+        name = c.get("name", f"collection_{collection_id}")
+        safe_name = sanitize_filename(name)
+        # 作者所有合集：作者目录下 合集_合集名(合集ID)-作者名
+        subdir_name = f"合集_{safe_name}({collection_id})-{author_folder_name}"
+        collection_path = os.path.join(base_path, subdir_name)
+        os.makedirs(collection_path, exist_ok=True)
+
+        print(f"\n[{idx}/{len(collections)}] 合集: {name} (ID={collection_id})")
+        crawl_collection(
+            collection_id=collection_id,
+            save_path=collection_path,
+            file_format=file_format,
+            login_auth=login_auth,
+            save_images=save_images,
+        )
 
 def add_common_args(parser):
     """添加通用参数到解析器"""
@@ -394,6 +519,16 @@ def crawler_main(args, login_auth=None):
     elif args.command == "collection":
         crawl_collection(
             args.collection_id,
+            save_path,
+            file_format,
+            login_auth,
+            save_images,
+            getattr(args, "author_url", None),
+        )
+
+    elif args.command == "author-collections":
+        crawl_author_collections(
+            args.author_url,
             save_path,
             file_format,
             login_auth,
@@ -548,7 +683,16 @@ def main():
     # 命令5: 根据合集 ID 保存合集内所有文章
     parser_collection = subparsers.add_parser("collection", help="根据合集ID保存合集内所有文章")
     parser_collection.add_argument("collection_id", type=str, help="合集ID（来自油猴脚本“复制ID”）")
+    parser_collection.add_argument("--author-url", type=str, default=None,
+                                   help="（可选）合集作者主页URL，例如 https://xxx.lofter.com，用于更准确地获取合集名和作者名")
     add_common_args(parser_collection)
+
+    # 命令6: 指定作者主页，获取该作者所有合集并分别保存
+    parser_author_collections = subparsers.add_parser(
+        "author-collections", help="根据作者主页URL获取作者所有合集，并分别保存合集内所有文章"
+    )
+    parser_author_collections.add_argument("author_url", type=str, help="作者主页URL，例如 https://xxx.lofter.com")
+    add_common_args(parser_author_collections)
     
     args = parser.parse_args()
     

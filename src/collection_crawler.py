@@ -8,6 +8,7 @@
 3. 分页获取某个合集下的所有文章，字段为 `response.items[*].post.blogPageUrl`
 """
 
+import re
 import requests
 from typing import List, Dict, Any, Optional
 
@@ -118,4 +119,87 @@ def get_collection_all_post_urls(
         offset += limit
 
     return all_urls
+
+
+def get_collections_by_blogdomain(
+    blogdomain: str,
+    login_auth: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    获取某个作者在 LOFTER 上的所有合集列表（对应 JS 中 getCollection）
+
+    :param blogdomain: 形如 "xxx.lofter.com" 的域名
+    :param login_auth: 登录授权码
+    :return: 合集列表，每个元素是后端返回的 collection 字典
+    """
+    if login_auth is None:
+        login_auth = DEFAULT_LOGIN_AUTH
+
+    headers = _build_collection_headers(login_auth)
+
+    params = {
+        "method": "getCollectionList",
+        "needViewCount": 1,
+        "blogdomain": blogdomain,
+        "product": "lofter-android-7.6.12",
+    }
+
+    resp = requests.get(API_COLLECTION_URL, headers=headers, params=params)
+    resp.raise_for_status()
+    data = resp.json()
+    response = data.get("response", {}) or {}
+    collections = response.get("collections", []) or []
+    return collections
+
+
+def get_collections_by_author_url(
+    author_url: str,
+    login_auth: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    通过作者主页 URL 获取该作者的所有合集
+
+    :param author_url: 作者主页，例如 "https://xxx.lofter.com" 或 "https://xxx.lofter.com/"
+    """
+    # 提取作者 ip / 子域名部分
+    m = re.search(r"http[s]?://([^/]+)\.lofter\.com", author_url)
+    if not m:
+        raise ValueError(f"无效的作者 URL：{author_url}")
+
+    author_ip = m.group(1)
+    blogdomain = f"{author_ip}.lofter.com"
+    return get_collections_by_blogdomain(blogdomain, login_auth=login_auth)
+
+
+def get_collection_meta(
+    collection_id: str,
+    login_auth: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    获取单个合集的元信息（名称、作者等），用于文件夹命名。
+
+    由于 postCollection.api 并没有“按ID查单个合集”的独立接口，
+    这里的做法是：
+    1. 先用 getCollectionDetail 拿一页详情，里面包含 collection 的基础信息
+    2. 再从 response 中抽取 name、blogs 等字段
+    """
+    if login_auth is None:
+        login_auth = DEFAULT_LOGIN_AUTH
+
+    headers = _build_collection_headers(login_auth)
+    params = {
+        "method": "getCollectionDetail",
+        "product": "lofter-android-7.6.12",
+        "offset": 0,
+        "limit": 1,
+        "collectionid": collection_id,
+        "order": 1,
+    }
+
+    resp = requests.get(API_COLLECTION_URL, headers=headers, params=params)
+    resp.raise_for_status()
+    data = resp.json()
+    response = data.get("response", {}) or {}
+    # 通常 response 中会包含 collection 信息（兼容字段名未知时，直接全部返回）
+    return response
 

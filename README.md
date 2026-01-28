@@ -34,6 +34,11 @@
 - 添加了Markdown格式转换功能
 - 改进了代码结构，提高了可维护性
 
+在实现合集爬取和部分接口访问时，还参考了以下项目的思路和实现：
+
+- [lofter-helper](https://github.com/SrakhiuMeow/lofter-helper)：用于理解网页版 Lofter 合集列表与合集详情相关接口（`postCollection.api`）、合集展示逻辑等
+- [Loftify](https://github.com/Robert-Stackflow/Loftify)：用于参考 LOFTER 移动端/第三方客户端中对非公开 API 的调用方式（如帖子详情、礼物/合集等接口）
+
 ## 功能特性
 
 1. **单篇文章保存**：给定网页链接，将内容保存为文件
@@ -44,11 +49,14 @@
    - 爬取某个作者的全部文件
    - 爬取某个作者的指定tag的所有文件
 4. **Tag+作者组合爬取**：爬取tag下的文件，然后进入这些文件的作者主页，爬取该作者的指定tag的所有文件
-5. **文件合并**：合并一个文件夹中的所有lofter爬取文件
+5. **合集爬取**：
+   - 根据**单个合集ID**，保存该合集中的所有文章
+   - 根据**作者主页URL**，获取该作者的所有合集，并分别保存每个合集中的所有文章
+6. **文件合并**：合并一个文件夹中的所有lofter爬取文件
    - 支持TXT和MD两种格式
    - 按发表时间排序合并
    - 每个文件作为一章，标题为"第XX章-文件名"
-6. **Markdown格式转换**：将Markdown文件转换为其他格式
+7. **Markdown格式转换**：将Markdown文件转换为其他格式
    - 支持转换为PDF、EPUB、TXT、DOCX格式
    - 可指定输入文件和输出路径
    - 默认输出到result目录
@@ -320,7 +328,70 @@ python run.py merge "./articles" -f md --add-toc --no-toc-links
 python run.py merge "./articles" -f txt --add-toc
 ```
 
-### 6. Markdown格式转换
+### 6. 合集相关功能
+
+#### 6.1 根据合集ID保存合集内所有文章
+
+```bash
+python run.py collection <合集ID> [选项]
+```
+
+**默认保存规则**：
+
+- 如果使用默认保存路径（不传 `--save-path` 或传入 `./result`）：
+  - 单个合集会保存到 `result/合集_合集名(合集ID)-作者名/` 目录下  
+  - 例如：  
+    - 合集链接：`https://www.lofter.com/front/blog/collection/share?collectionId=22156646&incantation=xxx`  
+    - 合集名：`阖家欢乐`，作者名：`一朵独自生存的花椰菜`  
+    - 文章将保存到：`result/合集_阖家欢乐(22156646)-一朵独自生存的花椰菜/`
+
+示例：
+
+```bash
+# 保存为TXT格式（默认）
+python run.py collection 22156646
+
+# 保存为Markdown格式
+python run.py collection 22156646 --format md
+
+# 提供作者主页URL，以更准确获得合集名和作者名（推荐）
+python run.py collection 22156646 --author-url https://chaoxinian.lofter.com/
+
+# 指定根保存路径（仍会在其下创建“合集名(合集ID)-作者名”文件夹）
+python run.py collection 22156646 --save-path "./my_result"
+```
+
+#### 6.2 根据作者主页保存该作者的所有合集及其文章
+
+```bash
+python run.py author-collections <作者主页URL> [选项]
+```
+
+**默认保存规则**：
+
+- 如果使用默认保存路径（不传 `--save-path` 或传入 `./result`）：
+  - 会在 `result/作者_作者名/` 目录下，为每个合集创建子文件夹：  
+    `合集_合集名(合集ID)-作者名/`
+  - 例如：  
+    - 作者主页：`https://chaoxinian.lofter.com/`  
+    - 假设作者名是 `一朵独自生存的花椰菜`，合集 `阖家欢乐(22156646)`  
+    - 所有合集文章最终路径类似：
+      - `result/作者_一朵独自生存的花椰菜/合集_阖家欢乐(22156646)-一朵独自生存的花椰菜/`
+
+示例：
+
+```bash
+# 保存某作者的所有合集里的文章为TXT格式
+python run.py author-collections https://chaoxinian.lofter.com/
+
+# 保存为Markdown格式
+python run.py author-collections https://chaoxinian.lofter.com/ --format md
+
+# 指定根保存路径（会在其下创建“作者名/合集名(合集ID)-作者名/”结构）
+python run.py author-collections https://chaoxinian.lofter.com/ --save-path "./my_result"
+```
+
+### 7. Markdown格式转换
 
 ```bash
 python run.py md2other <Markdown文件路径> --format <格式> [选项]

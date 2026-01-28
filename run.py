@@ -152,9 +152,27 @@ def main():
                                    default="new", help="排序方式")
     parser_tag_author.add_argument("--min-hot", type=int, default=0, help="最低热度限制")
     add_common_args(parser_tag_author)
+
+    # 命令5: 根据合集 ID 保存合集内所有文章
+    parser_collection = subparsers.add_parser("collection", help="根据合集ID保存合集内所有文章")
+    parser_collection.add_argument("collection_id", type=str, help="合集ID（来自网页合集链接或油猴脚本“复制ID”）")
+    parser_collection.add_argument(
+        "--author-url",
+        type=str,
+        default=None,
+        help="（可选）合集作者主页URL，例如 https://xxx.lofter.com，用于更准确地获取合集名和作者名",
+    )
+    add_common_args(parser_collection)
+
+    # 命令6: 指定作者主页，获取该作者所有合集并分别保存
+    parser_author_collections = subparsers.add_parser(
+        "author-collections", help="根据作者主页URL获取作者所有合集，并分别保存合集内所有文章"
+    )
+    parser_author_collections.add_argument("author_url", type=str, help="作者主页URL，例如 https://xxx.lofter.com")
+    add_common_args(parser_author_collections)
     
     # ========== 文件处理相关命令 ==========
-    # 命令5: 合并文件
+    # 命令7: 合并文件
     parser_merge = subparsers.add_parser("merge", help="合并文件夹中的所有lofter爬取文件")
     parser_merge.add_argument("input_folder", type=str, help="输入文件夹路径（包含所有要合并的文件）")
     parser_merge.add_argument("-o", "--output", type=str, default=None,
@@ -168,7 +186,7 @@ def main():
     parser_merge.add_argument("--no-toc-links", action="store_true",
                              help="如果合并MD文件且添加目录，不使用可跳转的链接（默认使用可跳转链接）")
     
-    # 命令6: Markdown格式转换
+    # 命令8: Markdown格式转换
     parser_md2other = subparsers.add_parser("md2other", help="将Markdown文件转换为其他格式（PDF、EPUB、TXT、DOCX）")
     parser_md2other.add_argument("input_file", type=str, help="输入的Markdown文件路径")
     parser_md2other.add_argument("-f", "--format", type=str, choices=["pdf", "epub", "txt", "docx"],
