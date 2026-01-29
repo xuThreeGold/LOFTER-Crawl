@@ -275,6 +275,14 @@ python run.py tag "示例tag" --sort total --min-hot 100
 python run.py author <作者主页URL> [选项]
 ```
 
+**功能说明**：
+
+- 爬取某个作者的全部文章，支持按 tag 过滤、时间范围过滤
+- 默认会：
+  - 为作者创建一个主目录：`result/作者_作者名/`
+  - 同时尝试获取该作者的所有合集信息
+  - 如果某篇文章属于作者的某个合集，则**只放入对应的合集子文件夹**（见下方“按合集归档逻辑”）
+
 示例：
 ```bash
 # 爬取作者的全部文章
@@ -288,7 +296,27 @@ python run.py author https://xxx.lofter.com/ --start-time "2024-01-01" --end-tim
 
 # 保存为Markdown格式
 python run.py author https://xxx.lofter.com/ --format md
+
+# 保存为EPUB格式（每篇文章一个 .epub 文件）
+python run.py author https://xxx.lofter.com/ --format epub
+
+# 关闭“只进合集目录”，改为在作者根目录和合集目录各保存一份
+python run.py author https://xxx.lofter.com/ --collections-only=false
 ```
+
+**按合集归档逻辑（作者级）**：
+
+- 默认行为（`--collections-only` 默认为 `true`）：
+  - 程序会通过作者主页自动获取该作者的所有合集列表，并为每个合集在作者目录下创建子目录：
+    - `result/作者_作者名/合集_合集名(合集ID)-作者名/`
+  - 如果某篇文章属于一个或多个合集：
+    - 仅保存到对应的合集子目录中，不在作者根目录重复保存。
+  - 如果某篇文章不属于任何合集：
+    - 只会保存在作者根目录 `result/作者_作者名/` 中。
+
+- 关闭合集专属保存（`--collections-only=false`）：
+  - 每篇文章**总是**先保存到作者根目录；
+  - 若文章属于某个合集，再额外复制一份到对应的合集子目录（即根目录 + 合集目录各一份）。
 
 ### 4. Tag+作者组合爬取
 

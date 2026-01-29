@@ -162,7 +162,7 @@ def crawl_tag(tag_name, sort_type="new", save_path=None, file_format="txt",
 
 def crawl_author(author_url, target_tags=None, save_path=None, file_format="txt",
                   group_by_author=False, login_auth=None, save_images=True,
-                  start_time=None, end_time=None):
+                  start_time=None, end_time=None, collections_only=True):
     """
     功能3: 爬取作者的文章（参考lofterSpider-master_v2/src/author_spider.py第265-368行）
     逻辑：
@@ -210,6 +210,44 @@ def crawl_author(author_url, target_tags=None, save_path=None, file_format="txt"
     
     print(f"最终保存路径: {save_path}")
     
+    # 步骤1.5：尝试获取作者的合集信息，并建立「文章 URL -> 所属合集目录列表」的映射
+    collection_url_map = {}
+    try:
+        from .collection_crawler import get_collections_by_author_url, get_collection_all_post_urls
+        from .utils import sanitize_filename as _sanitize
+
+        print("\n尝试获取作者的合集信息，用于按合集归档文章（如果有）...")
+        collections = get_collections_by_author_url(author_url, login_auth=login_auth)
+
+        if collections:
+            safe_author_name = _sanitize(author_name)
+            for c in collections:
+                cid = str(c.get("id"))
+                cname = c.get("name") or f"collection_{cid}"
+                safe_cname = _sanitize(cname)
+                # 作者目录下的合集子目录：合集_合集名(合集ID)-作者名
+                collection_folder_name = f"合集_{safe_cname}({cid})-{safe_author_name}"
+                collection_path = os.path.join(save_path, collection_folder_name)
+                os.makedirs(collection_path, exist_ok=True)
+
+                # 获取该合集下所有文章 URL
+                try:
+                    urls_in_collection = get_collection_all_post_urls(cid, login_auth=login_auth)
+                except Exception as e:
+                    print(f"  获取合集 {cid} 的文章列表失败，跳过该合集：{e}")
+                    continue
+
+                for u in urls_in_collection:
+                    collection_url_map.setdefault(u, []).append(collection_path)
+
+            if collection_url_map:
+                print(f"已为作者构建合集映射，涉及 {len(collections)} 个合集、{len(collection_url_map)} 篇文章")
+        else:
+            print("作者没有检测到任何合集（或接口返回为空），将不进行按合集归档（仅影响目录结构）")
+    except Exception as e:
+        print(f"获取作者合集信息失败，将不进行按合集归档（仅影响目录结构）: {e}")
+        collection_url_map = {}
+    
     print(f"\n开始保存博客到 {save_path}...")
     
     # 步骤2: 一篇一篇地保存，先确定是否符合tag要求，符合调用保存单篇文章的方法保存
@@ -229,9 +267,29 @@ def crawl_author(author_url, target_tags=None, save_path=None, file_format="txt"
                 continue
         
         try:
-            # 调用保存单篇文章的方法保存（不要修改）
-            save_single_post(blog_url, save_path, file_format, login_auth, save_images)
-            saved_count += 1
+            # 判断该文章是否属于作者的某个合集
+            extra_paths = collection_url_map.get(blog_url, [])
+
+            # 1) collections_only 为 True 且文章属于某个合集：
+            #    只保存到对应合集目录，不在作者根目录再保存一份
+            if collections_only and extra_paths:
+                for extra_path in extra_paths:
+                    print(f"  [collections-only] 文章属于合集目录：{extra_path}，仅保存到该目录...")
+                    save_single_post(blog_url, extra_path, file_format, login_auth, save_images)
+
+            # 2) 其他情况：先保存到作者根目录，再根据需要复制到合集目录
+            else:
+                # 先保存到作者主目录
+                save_single_post(blog_url, save_path, file_format, login_auth, save_images)
+                saved_count += 1
+
+                # 如果该文章属于作者的某个合集，则额外保存一份到对应的合集子目录中
+                for extra_path in extra_paths:
+                    # 避免和主目录重复
+                    if os.path.abspath(extra_path) == os.path.abspath(save_path):
+                        continue
+                    print(f"  检测到该文章属于合集目录：{extra_path}，额外保存一份...")
+                    save_single_post(blog_url, extra_path, file_format, login_auth, save_images)
             
             time.sleep(1)  # 避免请求过快
         except Exception as e:
@@ -617,9 +675,20 @@ def crawler_main(args, login_auth=None):
                  group_by_author, login_auth, save_images, args.min_hot)
     
     elif args.command == "author":
-        crawl_author(args.author_url, args.tags, save_path, file_format,
-                    group_by_author, login_auth, save_images,
-                    args.start_time, args.end_time)
+        # 默认启用“只进合集目录”的行为（collections_only=True）
+        collections_only = getattr(args, "collections_only", True)
+        crawl_author(
+            args.author_url,
+            args.tags,
+            save_path,
+            file_format,
+            group_by_author,
+            login_auth,
+            save_images,
+            args.start_time,
+            args.end_time,
+            collections_only,
+        )
     
     elif args.command == "tag-author":
         crawl_tag_then_author(args.tag_name, args.target_tag, args.sort, save_path,

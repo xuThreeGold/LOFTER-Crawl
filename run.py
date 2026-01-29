@@ -142,6 +142,11 @@ def main():
                               help="开始时间 YYYY-MM-DD")
     parser_author.add_argument("--end-time", type=str, default=None,
                               help="结束时间 YYYY-MM-DD")
+    parser_author.add_argument(
+        "--collections-only",
+        action="store_true",
+        help="如果文章属于作者的某个合集，则只放入对应合集文件夹，不在作者根目录再保存一份（未在任何合集中的文章仍在作者根目录保存）",
+    )
     add_common_args(parser_author)
     
     # 命令4: tag+作者组合
