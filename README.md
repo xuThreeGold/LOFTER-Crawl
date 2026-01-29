@@ -4,6 +4,8 @@
 [lofter-helper](https://github.com/SrakhiuMeow/lofter-helper)、  
 [Loftify](https://github.com/Robert-Stackflow/Loftify) 等项目实现的 LOFTER 内容爬取与管理工具。
 
+**文档结构**：本文档包含 [功能特性](#功能特性)、[使用说明](#使用说明)（含命令总览与使用指南）、[使用方法](#使用方法)（各命令详细用法与示例）、[超参数说明](#超参数说明)（通用与各命令专用参数、速查表）、[使用示例](#使用示例)、[彩蛋功能](#彩蛋功能说明)、[注意事项](#注意事项) 等章节。
+
 ## 项目介绍
 
 本项目是一个功能完整的LOFTER内容爬取和管理工具集，支持爬取、合并、格式转换等功能。
@@ -43,31 +45,18 @@
 
 ## 功能特性
 
-1. **单篇文章保存**：给定网页链接，将内容保存为文件
-   - **自动检测和保存彩蛋内容**：如果文章包含已解锁的彩蛋（打赏返礼），会自动提取并附加到文章末尾
-   - 支持TXT和Markdown两种格式
-2. **Tag爬取**：爬取指定tag下的所有文件，支持按作者分类存储
-   - 排序方式：最新、最热
-   - 最热排序：日榜、周榜、月榜、全部（默认）
-3. **作者爬取**：
-   - 爬取某个作者的全部文件
-   - 爬取某个作者的指定tag的所有文件
-4. **Tag+作者组合爬取**：爬取tag下的文件，然后进入这些文件的作者主页，爬取该作者的指定tag的所有文件
-5. **合集爬取**：
-   - 根据**单个合集ID**，保存该合集中的所有文章
-   - 根据**作者主页URL**，获取该作者的所有合集，并分别保存每个合集中的所有文章
-5b. **推文爬取**：给定一篇**推文**（内含多篇 LOFTER 文章链接的博文）URL，自动提取正文中的文章链接；若某篇属于该作者的某个合集则保存整个合集，否则只保存该单篇。结果保存在 `result/推文_推文标题-推文作者/` 下。
-6. **文件合并**：合并一个文件夹中的所有lofter爬取文件
-   - 支持TXT和MD两种格式
-   - 按发表时间排序合并
-   - 每个文件作为一章，标题为"第XX章-文件名"
-7. **Markdown格式转换**：将Markdown文件转换为其他格式
-   - 支持转换为PDF、EPUB、TXT、DOCX格式
-   - 可指定输入文件和输出路径
-   - 默认输出到result目录
-8. **文件格式**：
-   - TXT格式：图片链接保存在txt中，图片文件单独保存
-   - Markdown格式：图片直接嵌入文件
+| 序号 | 功能 | 说明 |
+|------|------|------|
+| 1 | **单篇文章保存** | 给定文章链接，将内容保存为文件；支持自动检测与保存彩蛋（打赏返礼）；支持 TXT、MD、EPUB 格式 |
+| 2 | **Tag 爬取** | 爬取指定 tag 下的所有文章，支持按作者分组；排序：最新 / 全部最热 / 月榜 / 周榜 / 日榜；可设最低热度 |
+| 3 | **作者爬取** | 爬取某作者全部或指定 tag 的文章；可选时间范围；默认按合集归档（属合集的文章只进合集目录） |
+| 4 | **Tag+作者组合爬取** | 先爬取 tag 下文章，再对出现的作者去重，爬取每位作者指定 tag 的文章（同一作者只爬一次） |
+| 5 | **合集爬取** | 按**合集 ID** 或**作者主页**保存合集内文章；可选爬完后合并为单文件并生成目录 |
+| 5b | **推文爬取** | 给定推文 URL，提取正文中的文章链接；属合集的保存整个合集，否则保存单篇；推文所在合集不爬 |
+| 6 | **文件合并** | 合并指定文件夹内本工具爬取的 TXT/MD 文件，按发表时间排序，可选目录；仅支持本工具生成的文件 |
+| 7 | **Markdown 格式转换** | 将 MD 转为 PDF、EPUB、TXT、DOCX；纯 Python 实现，无需 Pandoc |
+
+**输出格式**：爬虫可保存为 **TXT**（图片链接在文内、图片单独文件）、**MD**（图片嵌入）、**EPUB**（经 md2other 转换）。
 
 ## 环境要求
 
@@ -187,8 +176,22 @@ python run.py --help
 所有功能都通过 `run.py` 入口文件调用，基本格式：
 
 ```bash
-python run.py <命令> <参数> [选项]
+python run.py <命令> [位置参数] [选项]
 ```
+
+### 命令总览
+
+| 命令 | 语法 | 简要说明 | 需授权码 |
+|------|------|----------|----------|
+| `post` | `post <文章URL> [选项]` | 保存单篇文章（含彩蛋） | 是 |
+| `tag` | `tag <tag名称> [选项]` | 爬取 tag 下所有文章 | 是 |
+| `author` | `author <作者主页URL> [选项]` | 爬取作者文章（可按 tag/时间/合集归档） | 是 |
+| `tag-author` | `tag-author <初始tag> <目标tag> [选项]` | 先爬 tag，再爬这些作者的指定 tag（作者去重） | 是 |
+| `collection` | `collection <合集ID或链接> [选项]` | 保存该合集内所有文章，可选合并与目录 | 是 |
+| `author-collections` | `author-collections <作者主页URL> [选项]` | 保存该作者所有合集内的文章，可选每合集合并 | 是 |
+| `rec-post` | `rec-post <推文URL> [选项]` | 爬取推文正文中的文章链接（属合集则整合集，否则单篇） | 是 |
+| `merge` | `merge <输入文件夹> [选项]` | 合并文件夹内本工具爬取的 TXT/MD 文件 | 否 |
+| `md2other` | `md2other <MD文件> -f <格式> [选项]` | 将 Markdown 转为 PDF/EPUB/TXT/DOCX | 否 |
 
 ### 查看帮助
 
@@ -196,14 +199,24 @@ python run.py <命令> <参数> [选项]
 # 查看所有命令
 python run.py --help
 
-# 查看特定命令的帮助
+# 查看特定命令的帮助与参数
 python run.py post --help
 python run.py tag --help
 python run.py author --help
 python run.py tag-author --help
+python run.py collection --help
+python run.py author-collections --help
+python run.py rec-post --help
 python run.py merge --help
 python run.py md2other --help
 ```
+
+### 使用指南（快速开始）
+
+1. **配置授权码**：见下方「配置 → 获取登录授权码」。爬虫命令（除 `merge`、`md2other` 外）需授权码；未传入时会交互式询问。
+2. **选择命令**：按上表选择对应命令（如保存单篇用 `post`，按 tag 用 `tag`，按作者用 `author`，按合集用 `collection` / `author-collections`，推文内链接用 `rec-post`）。
+3. **常用选项**：`--format txt|md|epub` 指定格式，`--save-path <路径>` 指定保存目录，`--no-images` 不下载图片。
+4. **默认输出**：爬虫默认保存到 `./result`，合并与 md2other 默认输出到 `result` 或指定目录。
 
 ## 使用方法
 
@@ -549,11 +562,26 @@ python run.py md2other "result/example.md" --format epub --output-dir "./output"
 ```
 
 **注意**：
-- PDF、EPUB、DOCX格式转换需要安装Pandoc（https://pandoc.org/installing.html）
-- TXT格式转换无需额外依赖，可直接使用
-- 转换时如果遇到图片路径警告，不影响转换结果，只是图片可能不会包含在输出文件中
+- `md2other` 为**纯 Python 实现**，无需安装 Pandoc（见「安装」章节）。
+- 转换时若遇图片路径警告，一般不影响转换结果，图片可能未嵌入输出文件。
 
 ## 超参数说明
+
+以下为各命令支持的参数汇总与说明。**爬虫命令**（post、tag、author、tag-author、collection、author-collections、rec-post）均支持「通用超参数」；各命令另有专用参数见对应小节。
+
+### 超参数总览（按命令）
+
+| 命令 | 位置参数 | 通用参数 | 专用参数 |
+|------|----------|----------|----------|
+| `post` | `url` | 全部 | 无 |
+| `tag` | `tag_name` | 全部 | `--sort`、`--min-hot` |
+| `author` | `author_url` | 全部 | `--tags`、`--start-time`、`--end-time`、`--collections-only` |
+| `tag-author` | `tag_name`、`target_tag` | 全部 | `--sort`、`--min-hot` |
+| `collection` | `collection_id` | 全部 | `--author-url`、`--merge`、`--merge-add-toc` |
+| `author-collections` | `author_url` | 全部 | `--merge`、`--merge-add-toc` |
+| `rec-post` | `url` | 全部 | 无 |
+| `merge` | `input_folder` | - | `-o`、`-n`、`-f`、`--add-toc`、`--no-toc-links` |
+| `md2other` | `input_file` | - | `-f`（必需）、`-o`、`-d` |
 
 ### 通用超参数（所有爬虫命令支持）
 
@@ -630,9 +658,10 @@ python run.py md2other "result/example.md" --format epub --output-dir "./output"
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--tags` | 列表 | `None` | 目标tags列表，只爬取包含这些tag的文章（可指定多个） |
+| `--tags` | 列表 | `None` | 目标 tags 列表，只爬取包含这些 tag 的文章（可指定多个） |
 | `--start-time` | 字符串 | `None` | 开始时间，格式：`YYYY-MM-DD`（如：`2024-01-01`） |
 | `--end-time` | 字符串 | `None` | 结束时间，格式：`YYYY-MM-DD`（如：`2024-12-31`） |
+| `--collections-only` | 标志 | `True` | 若文章属于某合集则只放入该合集子目录，不另存作者根目录；设为 `false` 则根目录与合集目录各存一份 |
 
 #### `--tags <tag1> <tag2> ...`
 - **类型**: 字符串列表（可指定多个）
@@ -652,6 +681,12 @@ python run.py md2other "result/example.md" --format epub --output-dir "./output"
 - **默认值**: `None`（不限制）
 - **说明**: 结束时间，只爬取此日期之前发表的文章
 - **示例**: `--end-time "2024-12-31"`
+
+#### `--collections-only`
+- **类型**: 标志（无需参数）
+- **默认值**: 行为等效为 `True`（只进合集目录）
+- **说明**: 当文章属于作者的某个合集时，仅保存到对应合集子目录，不在作者根目录再存一份；不属于任何合集的文章仍保存在作者根目录。加 `--collections-only` 保持该行为；若希望根目录与合集目录各存一份，需在 run.py 中为该命令传 `--collections-only=false`（或本地等效方式）。
+- **示例**: 关闭“只进合集”时在 PowerShell 中可用 `` --collections-only=false ``（注意 `=false` 为参数值）
 
 ### Tag+作者组合爬取超参数
 
@@ -743,6 +778,38 @@ Tag+作者组合爬取命令支持所有Tag爬取的超参数（`--sort`、`--mi
 - `epub`: 电子书格式，使用 `ebooklib` 等库生成
 - `txt`: 纯文本格式，无需额外系统依赖
 - `docx`: Word文档格式，使用 `python-docx` 等库生成
+
+### 全命令参数速查表（按参数名）
+
+| 参数 | 适用命令 | 类型 | 默认值 |
+|------|----------|------|--------|
+| `url`（位置） | post, rec-post | 字符串 | - |
+| `tag_name`（位置） | tag | 字符串 | - |
+| `author_url`（位置） | author, author-collections | 字符串 | - |
+| `tag_name`、`target_tag`（位置） | tag-author | 字符串 | - |
+| `collection_id`（位置） | collection | 字符串 | - |
+| `input_folder`（位置） | merge | 字符串 | - |
+| `input_file`（位置） | md2other | 字符串 | - |
+| `--login-auth` | 所有爬虫命令 | 字符串 | 交互式/配置 |
+| `--save-path` | 所有爬虫命令 | 字符串 | `./result` |
+| `--format` | 所有爬虫命令 | txt/md/epub | `txt` |
+| `--no-images` | 所有爬虫命令 | 标志 | False |
+| `--no-group` | 所有爬虫命令 | 标志 | False |
+| `--sort` | tag, tag-author | new/total/month/week/date | `new` |
+| `--min-hot` | tag, tag-author | 整数 | `0` |
+| `--tags` | author | 列表 | None |
+| `--start-time` | author | YYYY-MM-DD | None |
+| `--end-time` | author | YYYY-MM-DD | None |
+| `--collections-only` | author | 标志 | True（只进合集目录） |
+| `--author-url` | collection | 字符串 | None |
+| `--merge` | collection, author-collections | 标志 | False |
+| `--merge-add-toc` | collection, author-collections | 标志 | False |
+| `-o, --output` | merge, md2other | 字符串 | result/… |
+| `-n, --name` | merge | 字符串 | 输入文件夹名 |
+| `-f, --format` | merge（txt/md）, md2other（pdf/epub/txt/docx） | 选择项 | merge: txt；md2other: 必需 |
+| `--add-toc` | merge | 标志 | False |
+| `--no-toc-links` | merge | 标志 | False |
+| `-d, --output-dir` | md2other | 字符串 | result |
 
 ## 使用示例
 
@@ -883,11 +950,12 @@ crawl_tag(
 
 ## 文件命名规则
 
-文件命名方式参考lofterSpider项目：
-- 有标题的文章：`文章标题 by 作者名.txt`
-- 无标题的文章：`作者名-第一个tag-发表时间.txt`
+文件命名方式参考 lofterSpider 项目（扩展名随 `--format` 变化）：
+- **TXT**（`--format txt`）：`文章标题 by 作者名.txt` 或 `作者名-第一个tag-发表时间.txt`
+- **MD**（`--format md`）：同上，扩展名为 `.md`
+- **EPUB**（`--format epub`）：同上，扩展名为 `.epub`
 
-文件开头包含信息：
+TXT/MD 文件开头包含信息：
 ```
 文章标题 by 作者名[作者IP]
 发表时间：2024-01-01
