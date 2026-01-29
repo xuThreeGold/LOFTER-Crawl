@@ -310,10 +310,9 @@ def crawl_tag_then_author(tag_name, target_tag, sort_type="new", save_path=None,
     功能4: 爬取tag下的文件，然后进入这些文件的作者主页，爬取该作者的指定tag的所有文件
     新实现逻辑（适配当前crawl_tag_posts与crawl_author实现）：
     1. 使用 crawl_tag_posts(tag_name, ...) 获取文章 URL 列表
-    2. 对每个 URL 调用 parse_post，解析出作者名与作者 IP
-    3. 去重得到作者列表
-    4. 对每位作者调用 crawl_author(author_url, [target_tag], ...) 进行作者级爬取，
-       作者级爬取内部会逐篇调用 save_single_post 保存（符合你的要求）
+    2. 对每个 URL 调用 parse_post，解析出作者名与作者 IP，按 author_url 去重（tag 下多篇同作者只算一位）
+    3. 得到去重后的作者列表
+    4. 对每位作者仅调用一次 crawl_author(author_url, [target_tag], ...)，不重复爬取同一作者
     """
     if save_path is None:
         save_path = DEFAULT_SAVE_PATH
@@ -325,10 +324,10 @@ def crawl_tag_then_author(tag_name, target_tag, sort_type="new", save_path=None,
         print("未获取到任何文章")
         return
     
-    # 步骤2: 解析每篇文章，收集作者信息（作者名 + author_ip）
-    print(f"步骤2: 从 {len(post_urls)} 篇文章中提取作者信息...")
-    authors = {}  # {author_url: {"name": author_name, "ip": author_ip}}
-    
+    # 步骤2: 解析每篇文章，收集作者信息（作者名 + author_ip），按 author_url 去重，同一作者只保留一条
+    print(f"步骤2: 从 {len(post_urls)} 篇文章中提取作者信息（同一作者仅记录一次）...")
+    authors = {}  # {author_url: {"name": author_name, "ip": author_ip}}，key 为 author_url 故天然去重
+
     for i, url in enumerate(post_urls, 1):
         try:
             print(f"[解析作者 {i}/{len(post_urls)}] {url}")
@@ -336,13 +335,13 @@ def crawl_tag_then_author(tag_name, target_tag, sort_type="new", save_path=None,
             if not post_info:
                 print("  解析失败，跳过")
                 continue
-            
+
             author_name = post_info.get("author_name", "").strip()
             author_ip = post_info.get("author_ip", "").strip()
             if not author_ip:
                 print("  未获取到作者IP，跳过")
                 continue
-            
+
             author_url = f"https://{author_ip}.lofter.com/"
             if author_url not in authors:
                 authors[author_url] = {
@@ -359,7 +358,7 @@ def crawl_tag_then_author(tag_name, target_tag, sort_type="new", save_path=None,
         print("未从tag文章中解析到任何作者信息")
         return
     
-    print(f"\n步骤3: 找到 {len(authors)} 位作者，开始爬取每位作者主页下、包含 tag '{target_tag}' 的文章...")
+    print(f"\n步骤3: 找到 {len(authors)} 位作者（已去重），开始爬取每位作者主页下、包含 tag '{target_tag}' 的文章...")
     
     # 步骤3: 对每个作者调用 crawl_author，由 crawl_author 内部负责按 tag 过滤并逐篇调用 save_single_post 保存
     for idx, (author_url, author_info) in enumerate(authors.items(), 1):
@@ -635,6 +634,183 @@ def crawl_author_collections(
             merge_add_toc=merge_add_toc,
         )
 
+
+def crawl_rec_post(
+    rec_post_url,
+    save_path=None,
+    file_format="txt",
+    login_auth=None,
+    save_images=True,
+):
+    """
+    爬取指定推文里的文章：解析推文正文中的 LOFTER 文章链接，
+    若某篇属于该作者的某个合集则保存整个合集，否则只保存该单篇。
+    保存根目录：result/推文_推文标题-推文作者/
+    """
+    from .utils import (
+        sanitize_filename,
+        normalize_post_url,
+        extract_lofter_post_links_from_html,
+        extract_author_info,
+    )
+
+    if save_path is None:
+        save_path = DEFAULT_SAVE_PATH
+
+    print(f"正在解析推文: {rec_post_url}")
+    post_info = parse_post(rec_post_url, login_auth)
+    if not post_info:
+        print("解析推文失败，请检查 URL 与授权码")
+        return
+
+    title = post_info.get("title", "推文")
+    author_name = post_info.get("author_name", "未知作者")
+    html_content = post_info.get("html_content", "")
+    content_text = post_info.get("content", "")
+
+    # 从正文 HTML 或纯文本中提取所有 LOFTER 文章链接
+    post_urls = extract_lofter_post_links_from_html(html_content)
+    if not post_urls and content_text:
+        import re as _re
+        # 纯文本中的 URL（如 Markdown 保存后的 [text](url) 或裸链）
+        url_pattern = _re.compile(
+            r"https?://[^\s\)\]\"']+\.lofter\.com/post/[^\s\)\]\"']+"
+        )
+        for u in url_pattern.findall(content_text):
+            norm = normalize_post_url(u)
+            if norm and norm not in post_urls:
+                post_urls.append(norm)
+    if not post_urls:
+        print("推文正文中未检测到任何 LOFTER 文章链接")
+        return
+
+    print(f"推文标题: {title}，作者: {author_name}")
+    print(f"共提取到 {len(post_urls)} 个文章链接")
+
+    # 推文本身所在合集不爬取，只保存推文这一篇；先找出该合集以便排除
+    rec_post_norm = normalize_post_url(rec_post_url)
+    excluded_collection = None  # (collection_id, author_url) 推文所属合集
+    try:
+        rec_author_ip = extract_author_info(rec_post_url)
+        if rec_author_ip:
+            rec_author_url = f"https://{rec_author_ip}.lofter.com/"
+            rec_collections = get_collections_by_author_url(rec_author_url, login_auth=login_auth)
+            for c in rec_collections:
+                cid = str(c.get("id"))
+                try:
+                    urls_in_c = get_collection_all_post_urls(cid, login_auth=login_auth)
+                except Exception:
+                    continue
+                if rec_post_norm in {normalize_post_url(u) for u in urls_in_c}:
+                    excluded_collection = (cid, rec_author_url)
+                    print(f"已识别推文本身所在合集 (ID={cid})，将不爬取该合集，仅保存推文单篇")
+                    break
+    except Exception as e:
+        print(f"检查推文所在合集时出错（将不排除）: {e}")
+
+    # 对每个链接：若属于某合集则记录合集，否则记录为单篇；同一合集/同一文章只记录一次
+    collections_to_crawl = set()  # (collection_id, author_url)，同一合集只爬一次
+    single_posts = set()  # 规范化后的文章 URL，同一篇只保存一次
+
+    for post_url in post_urls:
+        norm_url = normalize_post_url(post_url)
+        # 推文本身：只当单篇保存，不加入任何合集爬取
+        if norm_url == rec_post_norm:
+            single_posts.add(post_url)
+            continue
+        try:
+            author_ip = extract_author_info(post_url)
+        except Exception:
+            author_ip = ""
+        if not author_ip:
+            single_posts.add(post_url)
+            continue
+        author_url = f"https://{author_ip}.lofter.com/"
+        in_collection = False
+        try:
+            collections = get_collections_by_author_url(author_url, login_auth=login_auth)
+            for c in collections:
+                cid = str(c.get("id"))
+                pair = (cid, author_url)
+                if excluded_collection and pair == excluded_collection:
+                    continue  # 跳过推文本身所在合集
+                try:
+                    urls_in_c = get_collection_all_post_urls(cid, login_auth=login_auth)
+                except Exception:
+                    continue
+                normalized_in_c = {normalize_post_url(u) for u in urls_in_c}
+                if norm_url in normalized_in_c:
+                    collections_to_crawl.add(pair)
+                    in_collection = True
+                    break
+        except Exception as e:
+            print(f"检查文章是否在合集中时出错 ({post_url}): {e}")
+        if not in_collection:
+            single_posts.add(post_url)
+
+    # 去重后列表：同一合集只爬一次，同一单篇只保存一次
+    collections_list = list(collections_to_crawl)
+    single_posts_list = list(single_posts)
+    print(f"其中属于合集的文章将保存整个合集（共 {len(collections_list)} 个合集，已去重）")
+    print(f"不属于合集的文章将单独保存（共 {len(single_posts_list)} 篇，已去重）")
+
+    # 保存根目录：result/推文_推文标题-推文作者/
+    folder_name = f"推文_{sanitize_filename(title)}-{sanitize_filename(author_name)}"
+    if save_path == DEFAULT_SAVE_PATH:
+        base_path = os.path.join(DEFAULT_SAVE_PATH, folder_name)
+    else:
+        base_path = os.path.join(save_path, folder_name)
+    os.makedirs(base_path, exist_ok=True)
+    print(f"保存路径: {base_path}")
+
+    # 先爬合集（每个合集在 base_path 下单独子目录 合集_合集名(合集ID)-作者名）
+    for cid, author_url in collections_list:
+        try:
+            # 获取合集名与作者名以生成子目录名
+            try:
+                meta = get_collection_meta(cid, login_auth=login_auth)
+                cname = (meta.get("name") or meta.get("collection", {}).get("name") or f"collection_{cid}")
+                blogs = meta.get("blogs") or meta.get("blogList") or []
+                aname = "未知作者"
+                if blogs and isinstance(blogs, list):
+                    b = blogs[0]
+                    aname = b.get("blogNickName") or b.get("blogNick") or b.get("blogName") or aname
+                author_info = get_author_info(author_url, login_auth=login_auth)
+                aname = author_info.get("author_name", aname)
+            except Exception:
+                cname = f"collection_{cid}"
+                aname = "未知作者"
+            subdir_name = f"合集_{sanitize_filename(cname)}({cid})-{sanitize_filename(aname)}"
+            collection_path = os.path.join(base_path, subdir_name)
+            print(f"\n正在爬取合集 (ID={cid}) -> {subdir_name}...")
+            crawl_collection(
+                collection_id=cid,
+                save_path=collection_path,
+                file_format=file_format,
+                login_auth=login_auth,
+                save_images=save_images,
+                author_url=author_url,
+            )
+        except Exception as e:
+            print(f"爬取合集 {cid} 失败: {e}")
+
+    # 再保存单篇（直接放在 base_path，已去重）
+    for i, post_url in enumerate(single_posts_list, 1):
+        try:
+            print(f"\n[{i}/{len(single_posts_list)}] 保存单篇: {post_url}")
+            save_single_post(
+                post_url,
+                save_path=base_path,
+                file_format=file_format,
+                login_auth=login_auth,
+                save_images=save_images,
+            )
+        except Exception as e:
+            print(f"保存单篇失败 {post_url}: {e}")
+
+    print(f"\n推文内文章爬取完成，结果保存在: {base_path}")
+
+
 def add_common_args(parser):
     """添加通用参数到解析器"""
     parser.add_argument("--login-auth", type=str, default=None,
@@ -716,6 +892,15 @@ def crawler_main(args, login_auth=None):
             save_images,
             getattr(args, "merge", False),
             getattr(args, "merge_add_toc", False),
+        )
+
+    elif args.command == "rec-post":
+        crawl_rec_post(
+            getattr(args, "url", None),
+            save_path,
+            file_format,
+            login_auth,
+            save_images,
         )
 
 

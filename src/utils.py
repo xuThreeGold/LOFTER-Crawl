@@ -166,6 +166,42 @@ def extract_author_info(url):
     return ""
 
 
+def normalize_post_url(url):
+    """
+    将 LOFTER 文章 URL 规范化为可比较形式（去掉查询参数，统一 https）。
+    用于判断两篇是否为同一篇文章。
+    """
+    if not url or ".lofter.com/post/" not in url:
+        return ""
+    url = url.strip().replace("http://", "https://")
+    # 去掉 ?incantation=xxx 等查询参数
+    base = url.split("?")[0]
+    return base.rstrip("/")
+
+
+def extract_lofter_post_links_from_html(html):
+    """
+    从 HTML 中提取所有 LOFTER 文章链接（仅包含 /post/ 的链接，即单篇文章）。
+    返回去重后的规范化 URL 列表。
+    """
+    if not html:
+        return []
+    # 匹配 href="https://xxx.lofter.com/post/..." 或 href='...'
+    pattern = re.compile(
+        r'href\s*=\s*["\'](https?://[^"\']+\.lofter\.com/post/[^"\']+)["\']',
+        re.IGNORECASE
+    )
+    found = pattern.findall(html)
+    # 解码可能的 HTML 实体
+    decoded = []
+    for u in found:
+        u = u.replace("&amp;", "&").strip()
+        norm = normalize_post_url(u)
+        if norm and norm not in decoded:
+            decoded.append(norm)
+    return decoded
+
+
 def sleep_random(min_sec=0.5, max_sec=2.0):
     """随机休眠"""
     import time

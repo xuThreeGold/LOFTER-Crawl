@@ -56,6 +56,7 @@
 5. **合集爬取**：
    - 根据**单个合集ID**，保存该合集中的所有文章
    - 根据**作者主页URL**，获取该作者的所有合集，并分别保存每个合集中的所有文章
+5b. **推文爬取**：给定一篇**推文**（内含多篇 LOFTER 文章链接的博文）URL，自动提取正文中的文章链接；若某篇属于该作者的某个合集则保存整个合集，否则只保存该单篇。结果保存在 `result/推文_推文标题-推文作者/` 下。
 6. **文件合并**：合并一个文件夹中的所有lofter爬取文件
    - 支持TXT和MD两种格式
    - 按发表时间排序合并
@@ -324,7 +325,7 @@ python run.py author https://xxx.lofter.com/ --collections-only=false
 python run.py tag-author <初始tag> <目标tag> [选项]
 ```
 
-功能：先爬取初始tag下的文章，然后进入这些文章的作者主页，爬取每位作者的指定tag的所有文章。
+功能：先爬取初始tag下的文章，然后进入这些文章的作者主页，爬取每位作者的指定tag的所有文章。**同一作者只爬取一次**（tag 下多篇同作者会先按作者去重，再对每位作者爬一次）。
 
 示例：
 ```bash
@@ -405,6 +406,12 @@ python run.py collection 12345678 --author-url https://example.lofter.com/
 
 # 指定根保存路径（仍会在其下创建“合集名(合集ID)-作者名”文件夹）
 python run.py collection 12345678 --save-path "./my_result"
+
+# 爬取完成后合并为单一文件（MD 格式）
+python run.py collection 12345678 --format md --merge
+
+# 合并并在文件开头生成目录
+python run.py collection 12345678 --format md --merge --merge-add-toc
 ```
 
 #### 6.2 根据作者主页保存该作者的所有合集及其文章
@@ -435,6 +442,42 @@ python run.py author-collections https://example.lofter.com/ --format md
 
 # 指定根保存路径（会在其下创建“作者名/合集名(合集ID)-作者名/”结构）
 python run.py author-collections https://example.lofter.com/ --save-path "./my_result"
+
+# 爬取完成后为每个合集各自生成一个合并文件
+python run.py author-collections https://example.lofter.com/ --format md --merge
+
+# 每个合集的合并文件开头都生成目录
+python run.py author-collections https://example.lofter.com/ --format md --merge --merge-add-toc
+```
+
+#### 6.3 爬取推文里的文章（rec-post）
+
+推文指一篇博文中包含多篇 LOFTER 文章链接（如推荐/整理类博文）。本命令会解析推文正文中的文章链接，并**按是否属于合集**分别处理：
+
+- **若某篇链接属于该作者的某个合集**：保存**整个合集**（在 `推文_xxx` 目录下创建 `合集_合集名(合集ID)-作者名` 子目录）。
+- **若某篇不属于任何合集**：仅保存该**单篇文章**（直接放在 `推文_xxx` 目录下）。
+
+**注意**：
+- **推文本身所在合集不会爬取**：若推文这篇博文自己也属于其作者的某个合集，该合集不会被保存，只会把推文这一篇当作单篇保存。
+- **同一合集 / 同一文章只处理一次**：推文里多个链接指向同一合集时，该合集只爬取并保存一次；多个链接指向同一篇文章时，该篇只保存一次。
+
+保存根目录：`result/推文_推文标题-推文作者/`。
+
+```bash
+python run.py rec-post <推文URL> [选项]
+```
+
+示例：
+
+```bash
+# 爬取推文内所有链接对应的文章或合集，保存为 TXT（默认）
+python run.py rec-post "https://xxx.lofter.com/post/2046725b_2bc38ac1b"
+
+# 保存为 Markdown 格式
+python run.py rec-post "https://xxx.lofter.com/post/2046725b_2bc38ac1b" --format md
+
+# 指定保存路径
+python run.py rec-post "https://xxx.lofter.com/post/2046725b_2bc38ac1b" --save-path "./my_result"
 ```
 
 ### 7. 合集相关功能（续）
@@ -518,7 +561,7 @@ python run.py md2other "result/example.md" --format epub --output-dir "./output"
 |------|------|--------|------|
 | `--login-auth` | 字符串 | 交互式输入或配置文件默认值 | 登录授权码（LOFTER-PHONE-LOGIN-AUTH的值） |
 | `--save-path` | 字符串 | `./result` | 文件保存路径 |
-| `--format` | 选择项 | `txt` | 文件格式：`txt` 或 `md` |
+| `--format` | 选择项 | `txt` | 文件格式：`txt`、`md` 或 `epub` |
 | `--no-images` | 标志 | `False` | 不保存图片文件（仅保存文本） |
 | `--no-group` | 标志 | `False` | 不按作者分组（所有文件保存在同一文件夹） |
 
@@ -536,12 +579,13 @@ python run.py md2other "result/example.md" --format epub --output-dir "./output"
 - **示例**: `--save-path "./my_articles"`
 
 #### `--format <格式>`
-- **类型**: 选择项（`txt` 或 `md`）
+- **类型**: 选择项（`txt`、`md` 或 `epub`）
 - **默认值**: `txt`
 - **说明**: 文件保存格式
   - `txt`: 纯文本格式，图片链接记录在文件中，图片文件单独保存
   - `md`: Markdown格式，图片直接嵌入文件
-- **示例**: `--format md`
+  - `epub`: 电子书格式，先保存为临时 Markdown 再通过 `md2other` 转换为 EPUB
+- **示例**: `--format md`、`--format epub`
 
 #### `--no-images`
 - **类型**: 标志（无需参数）
@@ -611,26 +655,57 @@ python run.py md2other "result/example.md" --format epub --output-dir "./output"
 
 ### Tag+作者组合爬取超参数
 
-Tag+作者组合爬取命令支持所有Tag爬取的超参数（`--sort`、`--min-hot`）和通用超参数。
+Tag+作者组合爬取命令支持所有Tag爬取的超参数（`--sort`、`--min-hot`）和通用超参数。同一作者在 tag 下出现多篇时仅会爬取一次该作者（按作者去重后再爬）。
 
 ### 合集相关功能超参数
 
-合集相关功能（`collection` 和 `author-collections`）支持所有通用超参数，此外还有：
+合集相关功能（`collection` 和 `author-collections`）支持所有通用超参数（`--login-auth`、`--save-path`、`--format`、`--no-images`、`--no-group`），此外还有：
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--author-url` | 字符串 | `None` | 作者主页URL（仅 `collection` 命令支持，用于更准确获取合集名和作者名） |
+| 参数 | 类型 | 默认值 | 适用命令 | 说明 |
+|------|------|--------|----------|------|
+| `collection_id` / `author_url` | 位置参数 | - | `collection` / `author-collections` | 合集ID（或合集分享链接）/ 作者主页URL |
+| `--author-url` | 字符串 | `None` | 仅 `collection` | 作者主页URL，用于更准确获取合集名和作者名 |
+| `--merge` | 标志 | `False` | `collection`、`author-collections` | 爬取完成后，将合集内所有文章合并为一个文件 |
+| `--merge-add-toc` | 标志 | `False` | `collection`、`author-collections` | 在合并后的单一文件开头生成目录（需与 `--merge` 同时使用） |
 
 #### `--author-url <URL>`
 - **类型**: 字符串（URL）
 - **默认值**: `None`
-- **说明**: 作者主页URL，用于更准确获取合集名和作者名（仅 `collection` 命令支持）
+- **适用命令**: 仅 `collection`
+- **说明**: 作者主页URL，用于更准确获取合集名和作者名
 - **使用场景**: 当无法从合集ID直接获取准确的合集名和作者名时使用
-- **示例**: `--author-url https://chaoxinian.lofter.com/`
+- **示例**: `--author-url https://example.lofter.com/`
+
+#### `--merge`
+- **类型**: 标志（无需参数）
+- **默认值**: `False`（不合并）
+- **适用命令**: `collection`、`author-collections`
+- **说明**: 爬取完成后，将当前合集目录下的所有已保存文章合并为一个文件。
+  - **`collection`**：只合并当前这一个合集目录。
+  - **`author-collections`**：对该作者的**每一个合集目录**各自独立合并一份（每个合集一个合并文件）。
+- **合并规则**：
+  - 当 `--format txt` 或 `--format md` 时：直接合并，输出 `合并_合集_合集名(合集ID)-作者名.txt` 或 `.md`。
+  - 当 `--format epub` 时：先合并为 Markdown，再通过 `md2other` 转为 `合并_合集_合集名(合集ID)-作者名.epub`。
+- **排序**: 按发表时间升序（越早的章节越靠前）。
+- **示例**: `python run.py collection 12345678 --format md --merge`
+
+#### `--merge-add-toc`
+- **类型**: 标志（无需参数）
+- **默认值**: `False`（不生成目录）
+- **适用命令**: `collection`、`author-collections`
+- **说明**: 仅在启用 `--merge` 时生效；在合并后的单一文件**开头**自动生成目录。
+  - **TXT**：在文件开头生成纯文本目录。
+  - **MD**：在文件开头生成 Markdown 目录（章节标题可点击跳转）。
+  - **EPUB**：目录结构来自合并后的 Markdown 标题层级。
+- **示例**: `python run.py collection 12345678 --format md --merge --merge-add-toc`
 
 **注意**：
-- 合集爬取功能同样支持彩蛋检测，如果合集内的文章包含已解锁的彩蛋，会自动提取并保存
-- 彩蛋检测需要有效的登录授权码（必须是已解锁该彩蛋的账号）
+- 合集爬取功能同样支持彩蛋检测，如果合集内的文章包含已解锁的彩蛋，会自动提取并保存。
+- 彩蛋检测需要有效的登录授权码（必须是已解锁该彩蛋的账号）。
+
+### 推文爬取超参数（rec-post）
+
+`rec-post` 命令仅使用**通用超参数**，位置参数为推文页面 URL（`url`）。支持 `--login-auth`、`--save-path`、`--format`、`--no-images`、`--no-group`，无额外专用参数。
 
 ### 文件合并超参数
 
@@ -930,7 +1005,7 @@ A: 在 LOFTER App 中打开文章，如果能看到彩蛋内容，说明已解�
 
 8. **授权码管理**：
    - `merge` 和 `md2other` 命令不需要授权码，可以直接使用
-   - 爬虫相关命令（`post`、`tag`、`author`、`tag-author`、`collection`、`author-collections`）需要授权码
+   - 爬虫相关命令（`post`、`tag`、`author`、`tag-author`、`collection`、`author-collections`、`rec-post`）需要授权码
    - 如果未通过命令行提供授权码，程序会交互式询问
 
 9. **彩蛋功能注意事项**：

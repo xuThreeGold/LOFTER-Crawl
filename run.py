@@ -195,7 +195,15 @@ def main():
         help="在每个合集的合并文件开头生成目录（仅对 txt/md 有效）",
     )
     add_common_args(parser_author_collections)
-    
+
+    # 命令6b: 爬取推文里的文章（若属于某合集则保存整个合集，否则保存单篇）
+    parser_rec_post = subparsers.add_parser(
+        "rec-post",
+        help="爬取指定推文正文中的 LOFTER 文章链接：属于合集的保存整个合集，否则保存单篇",
+    )
+    parser_rec_post.add_argument("url", type=str, help="推文页面 URL（包含多篇 LOFTER 文章链接的博文）")
+    add_common_args(parser_rec_post)
+
     # ========== 文件处理相关命令 ==========
     # 命令7: 合并文件
     parser_merge = subparsers.add_parser("merge", help="合并文件夹中的所有lofter爬取文件")
