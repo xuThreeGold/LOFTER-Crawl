@@ -228,7 +228,6 @@ def crawl_author(author_url, target_tags=None, save_path=None, file_format="txt"
                 # 作者目录下的合集子目录：合集_合集名(合集ID)-作者名
                 collection_folder_name = f"合集_{safe_cname}({cid})-{safe_author_name}"
                 collection_path = os.path.join(save_path, collection_folder_name)
-                os.makedirs(collection_path, exist_ok=True)
 
                 # 获取该合集下所有文章 URL
                 try:
@@ -274,6 +273,7 @@ def crawl_author(author_url, target_tags=None, save_path=None, file_format="txt"
             #    只保存到对应合集目录，不在作者根目录再保存一份
             if collections_only and extra_paths:
                 for extra_path in extra_paths:
+                    os.makedirs(extra_path, exist_ok=True)
                     print(f"  [collections-only] 文章属于合集目录：{extra_path}，仅保存到该目录...")
                     save_single_post(blog_url, extra_path, file_format, login_auth, save_images)
 
@@ -288,6 +288,7 @@ def crawl_author(author_url, target_tags=None, save_path=None, file_format="txt"
                     # 避免和主目录重复
                     if os.path.abspath(extra_path) == os.path.abspath(save_path):
                         continue
+                    os.makedirs(extra_path, exist_ok=True)
                     print(f"  检测到该文章属于合集目录：{extra_path}，额外保存一份...")
                     save_single_post(blog_url, extra_path, file_format, login_auth, save_images)
             
